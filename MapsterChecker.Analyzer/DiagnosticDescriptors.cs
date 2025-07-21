@@ -2,8 +2,16 @@ using Microsoft.CodeAnalysis;
 
 namespace MapsterChecker.Analyzer;
 
+/// <summary>
+/// Contains all diagnostic descriptors used by the MapsterChecker analyzer.
+/// Defines the rules, messages, and severity levels for different types of mapping issues.
+/// </summary>
 public static class DiagnosticDescriptors
 {
+    /// <summary>
+    /// Diagnostic for top-level nullable to non-nullable type mappings.
+    /// Triggered when the main source type is nullable but the destination type is not.
+    /// </summary>
     public static readonly DiagnosticDescriptor NullableToNonNullableMapping = new(
         id: "MAPSTER001",
         title: "Nullable to non-nullable mapping",
@@ -13,6 +21,10 @@ public static class DiagnosticDescriptors
         isEnabledByDefault: true,
         description: "Mapster.Adapt call maps from a nullable type to a non-nullable type, which may cause runtime null reference exceptions if the source value is null.");
 
+    /// <summary>
+    /// Diagnostic for top-level incompatible type mappings.
+    /// Triggered when the main source and destination types are fundamentally incompatible.
+    /// </summary>
     public static readonly DiagnosticDescriptor IncompatibleTypeMapping = new(
         id: "MAPSTER002",
         title: "Incompatible type mapping",
@@ -22,6 +34,10 @@ public static class DiagnosticDescriptors
         isEnabledByDefault: true,
         description: "Mapster.Adapt call attempts to map between fundamentally incompatible types that cannot be converted.");
 
+    /// <summary>
+    /// Diagnostic for missing property mappings at the top level.
+    /// Currently not used but reserved for future top-level property analysis.
+    /// </summary>
     public static readonly DiagnosticDescriptor MissingPropertyMapping = new(
         id: "MAPSTER003",
         title: "Missing property mapping",
@@ -31,6 +47,10 @@ public static class DiagnosticDescriptors
         isEnabledByDefault: true,
         description: "Destination type contains properties that are not present in the source type and will not be mapped by Mapster.Adapt.");
 
+    /// <summary>
+    /// Diagnostic for property-level nullable to non-nullable type mappings.
+    /// Triggered when individual properties have nullability mismatches during recursive analysis.
+    /// </summary>
     public static readonly DiagnosticDescriptor PropertyNullableToNonNullableMapping = new(
         id: "MAPSTER001P",
         title: "Property nullable to non-nullable mapping",
@@ -40,6 +60,10 @@ public static class DiagnosticDescriptors
         isEnabledByDefault: true,
         description: "Property in Mapster.Adapt call maps from a nullable type to a non-nullable type, which may cause runtime null reference exceptions if the source property value is null.");
 
+    /// <summary>
+    /// Diagnostic for property-level incompatible type mappings.
+    /// Triggered when individual properties have fundamental type incompatibilities during recursive analysis.
+    /// </summary>
     public static readonly DiagnosticDescriptor PropertyIncompatibleTypeMapping = new(
         id: "MAPSTER002P",
         title: "Property incompatible type mapping",
@@ -49,6 +73,10 @@ public static class DiagnosticDescriptors
         isEnabledByDefault: true,
         description: "Property in Mapster.Adapt call attempts to map between fundamentally incompatible types that cannot be converted.");
 
+    /// <summary>
+    /// Diagnostic for missing source properties during property-level analysis.
+    /// Triggered when destination properties have no corresponding source properties during recursive analysis.
+    /// </summary>
     public static readonly DiagnosticDescriptor PropertyMissingMapping = new(
         id: "MAPSTER003P",
         title: "Missing source property for mapping",

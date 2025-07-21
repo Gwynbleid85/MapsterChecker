@@ -7,6 +7,10 @@ using System.Linq;
 
 namespace MapsterChecker.Analyzer;
 
+/// <summary>
+/// Roslyn diagnostic analyzer that detects compatibility issues in Mapster.Adapt method calls.
+/// Analyzes both top-level type compatibility and recursive property-level compatibility.
+/// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
 {
@@ -19,6 +23,11 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
             DiagnosticDescriptors.PropertyIncompatibleTypeMapping,
             DiagnosticDescriptors.PropertyMissingMapping);
 
+    /// <summary>
+    /// Initializes the analyzer by registering for invocation expression analysis.
+    /// Configures the analyzer to skip generated code and enable concurrent execution.
+    /// </summary>
+    /// <param name="context">The analysis context to configure</param>
     public override void Initialize(AnalysisContext context)
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
@@ -26,6 +35,11 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         context.RegisterSyntaxNodeAction(AnalyzeInvocation, SyntaxKind.InvocationExpression);
     }
 
+    /// <summary>
+    /// Analyzes invocation expressions to detect and validate Mapster.Adapt method calls.
+    /// Performs comprehensive type compatibility analysis and reports any issues found.
+    /// </summary>
+    /// <param name="context">The syntax node analysis context containing the invocation to analyze</param>
     private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
@@ -45,6 +59,13 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         ReportDiagnostics(context, invocation, compatibilityResult, adaptCallInfo);
     }
 
+    /// <summary>
+    /// Determines whether the given invocation expression is a call to Mapster's Adapt method.
+    /// Checks method name, containing type, and namespace to confirm it's a Mapster call.
+    /// </summary>
+    /// <param name="invocation">The invocation expression to check</param>
+    /// <param name="semanticModel">The semantic model for symbol resolution</param>
+    /// <returns>True if this is a Mapster.Adapt method call</returns>
     private static bool IsMapsterAdaptCall(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
     {
         var memberAccess = invocation.Expression as MemberAccessExpressionSyntax;
@@ -161,17 +182,28 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         };
     }
 
-    private class AdaptCallInfo
+    /// <summary>
+    /// Contains information about a detected Mapster.Adapt method call.
+    /// Encapsulates the source type, destination type, and location for diagnostic reporting.
+    /// </summary>
+    /// <param name="sourceType">The source type being mapped from</param>
+    /// <param name="destinationType">The destination type being mapped to</param>
+    /// <param name="location">The source location of the Adapt call for diagnostic reporting</param>
+    private class AdaptCallInfo(ITypeSymbol sourceType, ITypeSymbol destinationType, Location location)
     {
-        public AdaptCallInfo(ITypeSymbol sourceType, ITypeSymbol destinationType, Location location)
-        {
-            SourceType = sourceType;
-            DestinationType = destinationType;
-            Location = location;
-        }
-
-        public ITypeSymbol SourceType { get; }
-        public ITypeSymbol DestinationType { get; }
-        public Location Location { get; }
+        /// <summary>
+        /// Gets the source type being mapped from.
+        /// </summary>
+        public ITypeSymbol SourceType { get; } = sourceType;
+        
+        /// <summary>
+        /// Gets the destination type being mapped to.
+        /// </summary>
+        public ITypeSymbol DestinationType { get; } = destinationType;
+        
+        /// <summary>
+        /// Gets the source location of the Adapt call for diagnostic reporting.
+        /// </summary>
+        public Location Location { get; } = location;
     }
 }
