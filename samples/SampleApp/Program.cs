@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using Mapster;
 
 namespace SampleApp;
@@ -14,6 +15,7 @@ public class Address
 
 public class Person
 {
+    public string Id { get; set; }
     public string? Name { get; set; }
     public int Age { get; set; }
     public DateTime? BirthDate { get; set; }
@@ -32,6 +34,7 @@ public class AddressDto
 
 public class PersonDto
 {
+    public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
     public DateTime? BirthDate { get; set; }
@@ -45,6 +48,7 @@ public class Program
     {
         var person = new Person
         {
+            Id = "1234",
             Name = "John Doe",
             Age = 30,
             BirthDate = DateTime.Now.AddYears(-30)
@@ -68,7 +72,7 @@ public class Program
     private static void TestValidMappings(Person person)
     {
         var dto = person.Adapt<PersonDto>();
-        Console.WriteLine($"✅ Person to PersonDto: {dto.Name}, Age: {dto.Age}");
+        Console.WriteLine($"✅ Person to PersonDto: {JsonSerializer.Serialize(dto)}");
 
         var nonNullableString = "test";
         var nullableResult = nonNullableString.Adapt<string?>();
