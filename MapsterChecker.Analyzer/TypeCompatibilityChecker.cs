@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using System.Collections.Immutable;
 using System.Linq;
 
 namespace MapsterChecker.Analyzer;
@@ -18,8 +19,38 @@ public class TypeCompatibilityChecker
 
         CheckNullabilityCompatibility(sourceType, destinationType, result);
         CheckTypeCompatibility(sourceType, destinationType, result);
+        
+        if (ShouldPerformPropertyAnalysis(sourceType, destinationType))
+        {
+            var propertyAnalyzer = new PropertyMappingAnalyzer(_semanticModel);
+            var propertyResult = propertyAnalyzer.AnalyzePropertyMapping(sourceType, destinationType);
+            
+            result.PropertyIssues = propertyResult.Issues;
+            result.HasCircularReferences = propertyResult.HasCircularReference;
+            result.MaxDepthReached = propertyResult.MaxDepthReached;
+        }
 
         return result;
+    }
+
+    private bool ShouldPerformPropertyAnalysis(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    {
+        return IsComplexUserDefinedType(sourceType) && IsComplexUserDefinedType(destinationType);
+    }
+
+    private bool IsComplexUserDefinedType(ITypeSymbol type)
+    {
+        return type.TypeKind == TypeKind.Class && 
+               type.SpecialType == SpecialType.None &&
+               !IsSystemType(type);
+    }
+
+    private bool IsSystemType(ITypeSymbol type)
+    {
+        var typeName = type.ToDisplayString();
+        return typeName.StartsWith("System.") && 
+               !typeName.StartsWith("System.Collections") &&
+               typeName != "System.String";
     }
 
     private void CheckNullabilityCompatibility(ITypeSymbol sourceType, ITypeSymbol destinationType, TypeCompatibilityResult result)
@@ -209,6 +240,11 @@ public class TypeCompatibilityResult
     public bool HasIncompatibilityIssue { get; set; }
     public string? NullabilityIssueDescription { get; set; }
     public string? IncompatibilityIssueDescription { get; set; }
+    
+    public ImmutableArray<PropertyCompatibilityIssue> PropertyIssues { get; set; } = ImmutableArray<PropertyCompatibilityIssue>.Empty;
+    public bool HasCircularReferences { get; set; }
+    public bool MaxDepthReached { get; set; }
 
-    public bool HasAnyIssue => HasNullabilityIssue || HasIncompatibilityIssue;
+    public bool HasAnyIssue => HasNullabilityIssue || HasIncompatibilityIssue || !PropertyIssues.IsEmpty;
+    public bool HasPropertyIssues => !PropertyIssues.IsEmpty;
 }

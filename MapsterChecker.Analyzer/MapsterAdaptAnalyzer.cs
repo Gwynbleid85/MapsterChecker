@@ -14,7 +14,10 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         ImmutableArray.Create(
             DiagnosticDescriptors.NullableToNonNullableMapping,
             DiagnosticDescriptors.IncompatibleTypeMapping,
-            DiagnosticDescriptors.MissingPropertyMapping);
+            DiagnosticDescriptors.MissingPropertyMapping,
+            DiagnosticDescriptors.PropertyNullableToNonNullableMapping,
+            DiagnosticDescriptors.PropertyIncompatibleTypeMapping,
+            DiagnosticDescriptors.PropertyMissingMapping);
 
     public override void Initialize(AnalysisContext context)
     {
@@ -130,6 +133,32 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
 
             context.ReportDiagnostic(diagnostic);
         }
+
+        foreach (var propertyIssue in compatibilityResult.PropertyIssues)
+        {
+            var diagnosticDescriptor = GetDiagnosticDescriptorForPropertyIssue(propertyIssue.IssueType);
+            if (diagnosticDescriptor == null) continue;
+
+            var diagnostic = Diagnostic.Create(
+                diagnosticDescriptor,
+                adaptCallInfo.Location,
+                propertyIssue.PropertyPath,
+                propertyIssue.SourceType,
+                propertyIssue.DestinationType);
+
+            context.ReportDiagnostic(diagnostic);
+        }
+    }
+
+    private static DiagnosticDescriptor? GetDiagnosticDescriptorForPropertyIssue(PropertyIssueType issueType)
+    {
+        return issueType switch
+        {
+            PropertyIssueType.NullabilityMismatch => DiagnosticDescriptors.PropertyNullableToNonNullableMapping,
+            PropertyIssueType.TypeIncompatibility => DiagnosticDescriptors.PropertyIncompatibleTypeMapping,
+            PropertyIssueType.MissingSourceProperty => DiagnosticDescriptors.PropertyMissingMapping,
+            _ => null
+        };
     }
 
     private class AdaptCallInfo
