@@ -162,6 +162,7 @@ public class TestClass
             MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(System.Runtime.AssemblyTargetedPatchBandAttribute).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(Microsoft.CSharp.RuntimeBinder.CSharpArgumentInfo).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Mapster.TypeAdapter).Assembly.Location),
         };
 
         var compilation = CSharpCompilation.Create(

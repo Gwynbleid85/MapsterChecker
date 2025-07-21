@@ -19,7 +19,7 @@ public static class DiagnosticDescriptors
         category: "MapsterChecker.Nullability",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "Mapster.Adapt call maps from a nullable type to a non-nullable type, which may cause runtime null reference exceptions if the source value is null.");
+        description: "Mapster.Adapt call maps from a nullable type to a non-nullable type, which may cause invalid mappings if the source value is null.");
 
     /// <summary>
     /// Diagnostic for top-level incompatible type mappings.
@@ -58,7 +58,7 @@ public static class DiagnosticDescriptors
         category: "MapsterChecker.PropertyNullability",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "Property in Mapster.Adapt call maps from a nullable type to a non-nullable type, which may cause runtime null reference exceptions if the source property value is null.");
+        description: "Property in Mapster.Adapt call maps from a nullable type to a non-nullable type, which may cause invalid mappings if the source property value is null.");
 
     /// <summary>
     /// Diagnostic for property-level incompatible type mappings.

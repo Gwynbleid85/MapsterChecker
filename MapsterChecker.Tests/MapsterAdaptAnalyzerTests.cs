@@ -193,6 +193,9 @@ public class TestClass
             ReferenceAssemblies = ReferenceAssemblies.Net.Net80,
         };
         
+        // Add Mapster package reference
+        test.TestState.AdditionalReferences.Add(MetadataReference.CreateFromFile(typeof(Mapster.TypeAdapter).Assembly.Location));
+        
         test.ExpectedDiagnostics.AddRange(expected);
 
         await test.RunAsync();

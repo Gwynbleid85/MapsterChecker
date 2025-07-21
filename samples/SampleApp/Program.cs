@@ -3,18 +3,40 @@ using Mapster;
 
 namespace SampleApp;
 
+
+public class Address
+{
+    public string? Street { get; set; }
+    public string? City { get; set; }
+    public string? State { get; set; }
+    public string? ZipCode { get; set; }
+}
+
 public class Person
 {
     public string? Name { get; set; }
     public int Age { get; set; }
     public DateTime? BirthDate { get; set; }
+    
+    public Address Address { get; set; }
+    
+}
+
+public class AddressDto
+{
+    public string? Street { get; set; }
+    public string? City { get; set; }
+    public string? State { get; set; }
+    public string? ZipCode { get; set; }
 }
 
 public class PersonDto
 {
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
-    public DateTime BirthDate { get; set; }
+    public DateTime? BirthDate { get; set; }
+    
+    public AddressDto Address { get; set; }
 }
 
 public class Program
