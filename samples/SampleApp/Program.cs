@@ -15,7 +15,7 @@ public class Address
 
 public class Person
 {
-    public string Id { get; set; }
+    public Guid Id { get; set; }
     public string? Name { get; set; }
     public int Age { get; set; }
     public DateTime? BirthDate { get; set; }
@@ -34,7 +34,7 @@ public class AddressDto
 
 public class PersonDto
 {
-    public int Id { get; set; }
+    public string Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
     public DateTime? BirthDate { get; set; }
@@ -51,7 +51,7 @@ public class Program
         
         var person = new Person
         {
-            Id = "1234",
+            Id = Guid.NewGuid(),
             Name = "John Doe",
             Age = 30,
             BirthDate = DateTime.Now.AddYears(-30)
@@ -75,6 +75,7 @@ public class Program
     private static void TestValidMappings(Person person)
     {
         var dto = person.Adapt<PersonDto>();
+        
         Console.WriteLine($"✅ Person to PersonDto: {JsonSerializer.Serialize(dto)}");
 
         var nonNullableString = "test";

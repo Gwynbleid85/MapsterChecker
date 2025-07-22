@@ -224,9 +224,10 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
         if (numericTypes.Contains(sourceTypeName) && numericTypes.Contains(destTypeName))
             return true;
 
-        if ((sourceTypeName == "string" && destTypeName == "System.Guid") ||
-            (sourceTypeName == "System.Guid" && destTypeName == "string"))
-            return true;
+        // Removed automatic string<->Guid compatibility - these should require custom mappings
+        // if ((sourceTypeName == "string" && destTypeName == "System.Guid") ||
+        //     (sourceTypeName == "System.Guid" && destTypeName == "string"))
+        //     return true;
 
         if (sourceType.TypeKind == TypeKind.Enum && destinationType.TypeKind == TypeKind.Enum)
             return false;
