@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 
@@ -21,26 +22,85 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
             DiagnosticDescriptors.MissingPropertyMapping,
             DiagnosticDescriptors.PropertyNullableToNonNullableMapping,
             DiagnosticDescriptors.PropertyIncompatibleTypeMapping,
-            DiagnosticDescriptors.PropertyMissingMapping);
+            DiagnosticDescriptors.PropertyMissingMapping,
+            DiagnosticDescriptors.CustomMappingExpressionException,
+            DiagnosticDescriptors.CustomMappingReturnTypeIncompatible,
+            DiagnosticDescriptors.CustomMappingNullValue);
 
     /// <summary>
-    /// Initializes the analyzer by registering for invocation expression analysis.
+    /// Initializes the analyzer by registering for compilation-level analysis.
     /// Configures the analyzer to skip generated code and enable concurrent execution.
+    /// Uses compilation-level context to ensure configuration discovery and analysis share state.
     /// </summary>
     /// <param name="context">The analysis context to configure</param>
     public override void Initialize(AnalysisContext context)
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
-        context.RegisterSyntaxNodeAction(AnalyzeInvocation, SyntaxKind.InvocationExpression);
+        
+        // Use compilation-level analysis to ensure proper state sharing
+        context.RegisterCompilationAction(compilationContext =>
+        {
+            var registry = new MappingConfigurationRegistry();
+            var discovery = new MapsterConfigurationDiscovery(registry);
+            
+            // First pass: discover all configurations across all syntax trees
+            foreach (var syntaxTree in compilationContext.Compilation.SyntaxTrees)
+            {
+                var semanticModel = compilationContext.Compilation.GetSemanticModel(syntaxTree);
+                var root = syntaxTree.GetRoot(compilationContext.CancellationToken);
+                
+                foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+                {
+                    var mockContext = new SyntaxNodeAnalysisContext(
+                        invocation,
+                        semanticModel,
+                        compilationContext.Options,
+                        diagnostic => { }, // We're only discovering, not reporting diagnostics
+                        _ => true,
+                        compilationContext.CancellationToken);
+                    
+                    discovery.DiscoverConfiguration(mockContext);
+                }
+            }
+            
+            // Second pass: analyze Adapt calls with the now-populated registry
+            foreach (var syntaxTree in compilationContext.Compilation.SyntaxTrees)
+            {
+                var semanticModel = compilationContext.Compilation.GetSemanticModel(syntaxTree);
+                var root = syntaxTree.GetRoot(compilationContext.CancellationToken);
+                
+                foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+                {
+                    var diagnostics = new List<Diagnostic>();
+                    var mockContext = new SyntaxNodeAnalysisContext(
+                        invocation,
+                        semanticModel,
+                        compilationContext.Options,
+                        diagnostic => diagnostics.Add(diagnostic),
+                        _ => true,
+                        compilationContext.CancellationToken);
+                    
+                    AnalyzeInvocation(mockContext, registry);
+                    
+                    // Report all diagnostics found
+                    foreach (var diagnostic in diagnostics)
+                    {
+                        compilationContext.ReportDiagnostic(diagnostic);
+                    }
+                }
+            }
+        });
     }
 
     /// <summary>
     /// Analyzes invocation expressions to detect and validate Mapster.Adapt method calls.
     /// Performs comprehensive type compatibility analysis and reports any issues found.
+    /// Now includes custom configuration awareness.
     /// </summary>
     /// <param name="context">The syntax node analysis context containing the invocation to analyze</param>
-    private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context)
+    /// <param name="registry">The mapping configuration registry containing custom mappings</param>
+    private static void AnalyzeInvocation(SyntaxNodeAnalysisContext context, MappingConfigurationRegistry registry)
     {
         var invocation = (InvocationExpressionSyntax)context.Node;
         
@@ -51,7 +111,7 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         if (adaptCallInfo == null)
             return;
 
-        var compatibilityChecker = new TypeCompatibilityChecker(context.SemanticModel);
+        var compatibilityChecker = new TypeCompatibilityChecker(context.SemanticModel, registry);
         var compatibilityResult = compatibilityChecker.CheckCompatibility(
             adaptCallInfo.SourceType, 
             adaptCallInfo.DestinationType);

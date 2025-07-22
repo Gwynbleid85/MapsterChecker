@@ -85,4 +85,43 @@ public static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true,
         description: "Destination property has no corresponding source property and will not be mapped by Mapster.Adapt, potentially leaving it with default values.");
+
+    /// <summary>
+    /// Diagnostic for custom mapping expressions that may throw exceptions.
+    /// Triggered when custom mapping expressions contain method calls that can throw exceptions like int.Parse().
+    /// </summary>
+    public static readonly DiagnosticDescriptor CustomMappingExpressionException = new(
+        id: "MAPSTER004",
+        title: "Custom mapping expression may throw exception",
+        messageFormat: "Custom mapping expression for property '{0}' contains method call '{1}' that may throw exceptions",
+        category: "MapsterChecker.CustomMapping",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Custom mapping expression uses method calls that may throw exceptions at runtime, such as int.Parse() or Convert methods. Consider using TryParse methods or null checks.");
+
+    /// <summary>
+    /// Diagnostic for custom mapping expressions with incompatible return types.
+    /// Triggered when custom mapping expression return type is incompatible with destination property type.
+    /// </summary>
+    public static readonly DiagnosticDescriptor CustomMappingReturnTypeIncompatible = new(
+        id: "MAPSTER005",
+        title: "Custom mapping expression return type incompatible",
+        messageFormat: "Custom mapping expression for property '{0}' returns type '{1}' which is incompatible with destination type '{2}'",
+        category: "MapsterChecker.CustomMapping",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "Custom mapping expression return type cannot be assigned to the destination property type. Ensure the expression returns a compatible type.");
+
+    /// <summary>
+    /// Diagnostic for custom mapping expressions that may produce null values.
+    /// Triggered when custom mapping expressions may result in null values for non-nullable destination properties.
+    /// </summary>
+    public static readonly DiagnosticDescriptor CustomMappingNullValue = new(
+        id: "MAPSTER006",
+        title: "Custom mapping expression may produce null value",
+        messageFormat: "Custom mapping expression for property '{0}' may produce null value for non-nullable destination type '{1}'",
+        category: "MapsterChecker.CustomMapping",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true,
+        description: "Custom mapping expression may evaluate to null when the destination property is non-nullable, which could cause runtime issues. Consider adding null checks or default values.");
 }

@@ -46,6 +46,9 @@ public class Program
 {
     public static void Main()
     {
+        // Configure Mapster mappings
+        MapsterConfig.Configure();
+        
         var person = new Person
         {
             Id = "1234",

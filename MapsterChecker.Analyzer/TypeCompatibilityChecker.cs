@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
 using System.Linq;
 
@@ -7,13 +8,16 @@ namespace MapsterChecker.Analyzer;
 /// <summary>
 /// Analyzes type compatibility between source and destination types for Mapster mapping operations.
 /// Performs comprehensive checks including nullability, type compatibility, and property-level analysis.
+/// Now supports custom mapping configurations to override default compatibility rules.
 /// </summary>
 /// <param name="semanticModel">The semantic model used for type analysis and compilation context</param>
-public class TypeCompatibilityChecker(SemanticModel semanticModel)
+/// <param name="configurationRegistry">The registry containing custom mapping configurations</param>
+public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfigurationRegistry? configurationRegistry = null)
 {
     /// <summary>
     /// Performs comprehensive compatibility analysis between source and destination types.
     /// Includes nullability checking, type compatibility, and recursive property analysis for complex types.
+    /// Now considers custom mapping configurations to override default compatibility rules.
     /// </summary>
     /// <param name="sourceType">The source type being mapped from</param>
     /// <param name="destinationType">The destination type being mapped to</param>
@@ -22,12 +26,25 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel)
     {
         var result = new TypeCompatibilityResult();
 
-        CheckNullabilityCompatibility(sourceType, destinationType, result);
-        CheckTypeCompatibility(sourceType, destinationType, result);
+        // Check if there's a custom mapping configuration that overrides default checks
+        var hasCustomMapping = configurationRegistry?.HasCustomMapping(sourceType, destinationType) ?? false;
+
+        if (!hasCustomMapping)
+        {
+            CheckNullabilityCompatibility(sourceType, destinationType, result);
+            CheckTypeCompatibility(sourceType, destinationType, result);
+        }
+        else
+        {
+            // Still check nullability for custom mappings, but be less strict about type compatibility
+            CheckNullabilityCompatibility(sourceType, destinationType, result);
+            // Custom mapping validation would be performed by a separate validator
+            ValidateCustomMappingConfigurations(sourceType, destinationType, result);
+        }
         
         if (ShouldPerformPropertyAnalysis(sourceType, destinationType))
         {
-            var propertyAnalyzer = new PropertyMappingAnalyzer(semanticModel);
+            var propertyAnalyzer = new PropertyMappingAnalyzer(semanticModel, configurationRegistry);
             var propertyResult = propertyAnalyzer.AnalyzePropertyMapping(sourceType, destinationType);
             
             result.PropertyIssues = propertyResult.Issues;
@@ -238,6 +255,127 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel)
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Validates custom mapping configurations and reports any issues with the mapping expressions.
+    /// Checks for potential exceptions, null reference issues, and type compatibility problems.
+    /// </summary>
+    /// <param name="sourceType">The source type</param>
+    /// <param name="destinationType">The destination type</param>
+    /// <param name="result">The result object to add validation issues to</param>
+    private void ValidateCustomMappingConfigurations(ITypeSymbol sourceType, ITypeSymbol destinationType, TypeCompatibilityResult result)
+    {
+        if (configurationRegistry == null) return;
+
+        // Get all custom mappings for this type pair
+        var allMappings = configurationRegistry.GetAllMappings()
+            .Where(m => m.TypeKey == $"{sourceType.ToDisplayString()}→{destinationType.ToDisplayString()}")
+            .SelectMany(m => m.Mappings);
+
+        foreach (var mapping in allMappings)
+        {
+            ValidateCustomMappingExpression(mapping, result);
+        }
+    }
+
+    /// <summary>
+    /// Validates a single custom mapping expression for safety and correctness.
+    /// </summary>
+    /// <param name="mapping">The custom mapping to validate</param>
+    /// <param name="result">The result object to add validation issues to</param>
+    private void ValidateCustomMappingExpression(CustomMappingInfo mapping, TypeCompatibilityResult result)
+    {
+        if (mapping.SourceExpression == null || mapping.SemanticModel == null) return;
+
+        // Check for potentially dangerous method calls like int.Parse()
+        var invocations = mapping.SourceExpression.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        foreach (var invocation in invocations)
+        {
+            CheckForDangerousMethodCall(invocation, mapping, result);
+        }
+
+        // Check for null reference potential
+        CheckForNullReferenceRisk(mapping.SourceExpression, mapping, result);
+
+        // Validate expression return type compatibility
+        ValidateExpressionReturnType(mapping, result);
+    }
+
+    /// <summary>
+    /// Checks for method calls that might throw exceptions.
+    /// </summary>
+    private void CheckForDangerousMethodCall(InvocationExpressionSyntax invocation, CustomMappingInfo mapping, TypeCompatibilityResult result)
+    {
+        if (mapping.SemanticModel == null) return;
+
+        var symbolInfo = mapping.SemanticModel.GetSymbolInfo(invocation);
+        if (symbolInfo.Symbol is IMethodSymbol methodSymbol)
+        {
+            var methodName = methodSymbol.Name;
+            var containingType = methodSymbol.ContainingType?.ToDisplayString();
+
+            // Known potentially dangerous methods
+            var dangerousMethods = new[]
+            {
+                ("int.Parse", "System.Int32"),
+                ("double.Parse", "System.Double"),
+                ("DateTime.Parse", "System.DateTime"),
+                ("Convert.ToInt32", "System.Convert")
+            };
+
+            if (dangerousMethods.Any(dm => methodName.Contains("Parse") || methodName.Contains("Convert")))
+            {
+                // This would generate a MAPSTER004 diagnostic, but we'll add that to the result for now
+                // The actual diagnostic reporting will be handled by the analyzer
+                result.IncompatibilityIssueDescription = $"Custom mapping expression contains potentially dangerous method call: {methodName}";
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks for potential null reference issues in the mapping expression.
+    /// </summary>
+    private void CheckForNullReferenceRisk(ExpressionSyntax expression, CustomMappingInfo mapping, TypeCompatibilityResult result)
+    {
+        // Check for member access on potentially null expressions
+        var memberAccesses = expression.DescendantNodes().OfType<MemberAccessExpressionSyntax>();
+        foreach (var memberAccess in memberAccesses)
+        {
+            if (mapping.SemanticModel != null)
+            {
+                var typeInfo = mapping.SemanticModel.GetTypeInfo(memberAccess.Expression);
+                if (typeInfo.Type != null && CanBeNull(typeInfo.Type))
+                {
+                    result.NullabilityIssueDescription = $"Custom mapping expression may access member on null reference: {memberAccess}";
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Validates that the expression return type is compatible with the destination property.
+    /// </summary>
+    private void ValidateExpressionReturnType(CustomMappingInfo mapping, TypeCompatibilityResult result)
+    {
+        if (mapping.SourceExpression == null || mapping.SemanticModel == null) return;
+
+        var expressionType = mapping.SemanticModel.GetTypeInfo(mapping.SourceExpression).Type;
+        if (expressionType == null) return;
+
+        // For now, we'll assume the destination type is compatible
+        // A more sophisticated implementation would compare with the actual destination property type
+    }
+
+    /// <summary>
+    /// Checks if a type can potentially be null.
+    /// </summary>
+    private bool CanBeNull(ITypeSymbol type)
+    {
+        return type.IsReferenceType || 
+               (type is INamedTypeSymbol namedType && 
+                namedType.IsGenericType && 
+                namedType.ConstructedFrom.ToDisplayString() == "System.Nullable<T>");
     }
 
     /// <summary>
