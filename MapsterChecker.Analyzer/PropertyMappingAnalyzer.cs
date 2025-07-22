@@ -132,20 +132,20 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
             if (configurationRegistry != null && _rootSourceType != null && _rootDestinationType != null && 
                 configurationRegistry.HasPropertyMapping(_rootSourceType, _rootDestinationType, destProp.Name))
             {
-                // Property has custom mapping, validate the custom expression instead
+                // Property has custom mapping, validate the custom expression instead and skip default validation
                 var customMapping = configurationRegistry.GetPropertyMapping(_rootSourceType, _rootDestinationType, destProp.Name);
                 if (customMapping != null)
                 {
                     var customValidationResult = ValidateCustomPropertyMapping(customMapping, sourceProp, destProp, currentPropertyPath);
                     issues.AddRange(customValidationResult);
                 }
+                // Skip the rest of the property analysis - custom mapping handles it
+                continue;
             }
-            else
-            {
-                // Check direct property compatibility (nullable, type compatibility)
-                var directCompatibilityResult = CheckDirectPropertyCompatibility(sourceProp, destProp, currentPropertyPath);
-                issues.AddRange(directCompatibilityResult);
-            }
+
+            // Check direct property compatibility (nullable, type compatibility)
+            var directCompatibilityResult = CheckDirectPropertyCompatibility(sourceProp, destProp, currentPropertyPath);
+            issues.AddRange(directCompatibilityResult);
 
             // Recursively analyze nested complex types
             if (IsComplexType(sourceProp.Type) && IsComplexType(destProp.Type))
@@ -181,20 +181,6 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
         string propertyPath)
     {
         var issues = new List<PropertyCompatibilityIssue>();
-        
-        // Check if there's a custom property mapping that overrides default compatibility
-        if (configurationRegistry != null && _rootSourceType != null && _rootDestinationType != null)
-        {
-            if (configurationRegistry.HasPropertyMapping(_rootSourceType, _rootDestinationType, destinationProperty.Name))
-            {
-                // Custom mapping exists for this property, validate the custom expression instead
-                var customMapping = configurationRegistry.GetPropertyMapping(_rootSourceType, _rootDestinationType, destinationProperty.Name);
-                if (customMapping != null)
-                {
-                    return ValidateCustomPropertyMapping(customMapping, sourceProperty, destinationProperty, propertyPath);
-                }
-            }
-        }
         
         var typeChecker = new TypeCompatibilityChecker(semanticModel, configurationRegistry);
         var compatibilityResult = typeChecker.CheckCompatibility(sourceProperty.Type, destinationProperty.Type);
@@ -268,11 +254,11 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
             issues.Add(new PropertyCompatibilityIssue
             {
                 PropertyPath = propertyPath,
-                SourceType = dangerousMethod,
-                DestinationType = "custom expression",
-                IssueType = PropertyIssueType.NullabilityMismatch,
+                SourceType = propertyPath, // Use property path as the first parameter
+                DestinationType = dangerousMethod, // Use dangerous method as the second parameter
+                IssueType = PropertyIssueType.CustomMappingDangerousExpression,
                 Severity = DiagnosticSeverity.Warning,
-                Description = $"Custom mapping expression contains potentially dangerous method call that may throw exceptions: {dangerousMethod}"
+                Description = $"Custom mapping expression uses '{dangerousMethod}' which may throw exceptions for invalid values"
             });
         }
         // Note: For custom mappings, we only check for dangerous method calls
@@ -519,5 +505,11 @@ public enum PropertyIssueType
     /// Source property exists but has no corresponding destination property.
     /// The source property value will be ignored during mapping.
     /// </summary>
-    MissingDestinationProperty
+    MissingDestinationProperty,
+    
+    /// <summary>
+    /// Custom mapping expression contains dangerous method calls that may throw exceptions.
+    /// This includes methods like int.Parse(), Convert.ToInt32(), etc.
+    /// </summary>
+    CustomMappingDangerousExpression
 }

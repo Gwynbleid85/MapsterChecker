@@ -44,7 +44,9 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
             var registry = new MappingConfigurationRegistry();
             var discovery = new MapsterConfigurationDiscovery(registry);
             
-            // First pass: discover all configurations across all syntax trees
+            // Collect all invocations from all syntax trees first
+            var allInvocations = new List<(InvocationExpressionSyntax Invocation, SemanticModel SemanticModel)>();
+            
             foreach (var syntaxTree in compilationContext.Compilation.SyntaxTrees)
             {
                 var semanticModel = compilationContext.Compilation.GetSemanticModel(syntaxTree);
@@ -52,42 +54,48 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
                 
                 foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
                 {
-                    var mockContext = new SyntaxNodeAnalysisContext(
-                        invocation,
-                        semanticModel,
-                        compilationContext.Options,
-                        diagnostic => { }, // We're only discovering, not reporting diagnostics
-                        _ => true,
-                        compilationContext.CancellationToken);
-                    
-                    discovery.DiscoverConfiguration(mockContext);
+                    allInvocations.Add((invocation, semanticModel));
                 }
             }
             
-            // Second pass: analyze Adapt calls with the now-populated registry
-            foreach (var syntaxTree in compilationContext.Compilation.SyntaxTrees)
+            // First pass: discover all configurations across all invocations
+            // Process configuration calls first to ensure registry is fully populated
+            foreach (var (invocation, semanticModel) in allInvocations)
             {
-                var semanticModel = compilationContext.Compilation.GetSemanticModel(syntaxTree);
-                var root = syntaxTree.GetRoot(compilationContext.CancellationToken);
+                var mockContext = new SyntaxNodeAnalysisContext(
+                    invocation,
+                    semanticModel,
+                    compilationContext.Options,
+                    diagnostic => { }, // We're only discovering, not reporting diagnostics
+                    _ => true,
+                    compilationContext.CancellationToken);
                 
-                foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+                discovery.DiscoverConfiguration(mockContext);
+            }
+            
+            // Second pass: analyze Adapt calls with the now-populated registry
+            // Only process Adapt calls after all configurations have been discovered
+            foreach (var (invocation, semanticModel) in allInvocations)
+            {
+                // Skip configuration calls in analysis phase
+                if (IsMapsterConfigurationCall(invocation, semanticModel))
+                    continue;
+                    
+                var diagnostics = new List<Diagnostic>();
+                var mockContext = new SyntaxNodeAnalysisContext(
+                    invocation,
+                    semanticModel,
+                    compilationContext.Options,
+                    diagnostic => diagnostics.Add(diagnostic),
+                    _ => true,
+                    compilationContext.CancellationToken);
+                
+                AnalyzeInvocation(mockContext, registry);
+                
+                // Report all diagnostics found
+                foreach (var diagnostic in diagnostics)
                 {
-                    var diagnostics = new List<Diagnostic>();
-                    var mockContext = new SyntaxNodeAnalysisContext(
-                        invocation,
-                        semanticModel,
-                        compilationContext.Options,
-                        diagnostic => diagnostics.Add(diagnostic),
-                        _ => true,
-                        compilationContext.CancellationToken);
-                    
-                    AnalyzeInvocation(mockContext, registry);
-                    
-                    // Report all diagnostics found
-                    foreach (var diagnostic in diagnostics)
-                    {
-                        compilationContext.ReportDiagnostic(diagnostic);
-                    }
+                    compilationContext.ReportDiagnostic(diagnostic);
                 }
             }
         });
@@ -153,6 +161,69 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Determines whether the given invocation expression is a Mapster configuration call.
+    /// Used to separate configuration discovery from analysis phases.
+    /// </summary>
+    /// <param name="invocation">The invocation expression to check</param>
+    /// <param name="semanticModel">The semantic model for symbol resolution</param>
+    /// <returns>True if this is a Mapster configuration method call</returns>
+    private static bool IsMapsterConfigurationCall(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    {
+        // Check for TypeAdapterConfig<TSource, TDestination>.NewConfig() pattern
+        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+        {
+            if (memberAccess.Name.Identifier.ValueText == "NewConfig")
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
+                if (symbolInfo.Symbol is IMethodSymbol methodSymbol)
+                {
+                    return IsTypeAdapterConfigMethod(methodSymbol);
+                }
+            }
+        }
+
+        // Check for fluent API calls (.Map, .Ignore, etc.)
+        var symbolInfo2 = semanticModel.GetSymbolInfo(invocation);
+        if (symbolInfo2.Symbol is IMethodSymbol method)
+        {
+            return IsMapsterFluentMethod(method);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks if the method belongs to TypeAdapterConfig.
+    /// </summary>
+    private static bool IsTypeAdapterConfigMethod(IMethodSymbol methodSymbol)
+    {
+        var containingType = methodSymbol.ContainingType;
+        if (containingType == null) return false;
+
+        var typeName = containingType.ToDisplayString();
+        return typeName.StartsWith("Mapster.TypeAdapterConfig") || 
+               typeName.StartsWith("TypeAdapterConfig");
+    }
+
+    /// <summary>
+    /// Checks if the method is part of Mapster's fluent configuration API.
+    /// </summary>
+    private static bool IsMapsterFluentMethod(IMethodSymbol methodSymbol)
+    {
+        var containingType = methodSymbol.ContainingType;
+        if (containingType == null) return false;
+
+        var typeName = containingType.ToDisplayString();
+        var methodName = methodSymbol.Name;
+
+        // Check for methods that are part of configuration chains
+        var configMethods = new[] { "Map", "Ignore", "MapWith", "TwoWays", "BeforeMapping", "AfterMapping" };
+        
+        return (typeName.Contains("TypeAdapterConfig") || typeName.Contains("TypeAdapterSetter")) &&
+               configMethods.Contains(methodName);
     }
 
     private static AdaptCallInfo? ExtractAdaptCallInfo(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
@@ -238,6 +309,7 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
             PropertyIssueType.NullabilityMismatch => DiagnosticDescriptors.PropertyNullableToNonNullableMapping,
             PropertyIssueType.TypeIncompatibility => DiagnosticDescriptors.PropertyIncompatibleTypeMapping,
             PropertyIssueType.MissingSourceProperty => DiagnosticDescriptors.PropertyMissingMapping,
+            PropertyIssueType.CustomMappingDangerousExpression => DiagnosticDescriptors.CustomMappingExpressionException,
             _ => null
         };
     }

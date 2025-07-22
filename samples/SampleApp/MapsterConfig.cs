@@ -9,6 +9,7 @@ public class MapsterConfig
         // Custom mapping configuration for Person to PersonDto
         TypeAdapterConfig<Person, PersonDto>
             .NewConfig()
-            .Map(dest => dest.Id, src => int.Parse(src.Id));
+            .Map(dest => dest.Id, src => src.Id.ToString())
+            .Map(dest => dest.Name, src => src.Name ?? "Unknown");
     }
 }
