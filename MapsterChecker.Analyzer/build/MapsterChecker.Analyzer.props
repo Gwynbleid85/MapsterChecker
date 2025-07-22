@@ -1,0 +1,31 @@
+<Project>
+  <PropertyGroup>
+    <!-- Disable conflicting analyzers that may interfere with MapsterChecker -->
+    <RunCodeAnalysis>false</RunCodeAnalysis>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Disable specific FxCop analyzers that may conflict -->
+    <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.Filename)' == 'Microsoft.CodeAnalysis.CSharp.NetAnalyzers'" />
+    <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.Filename)' == 'Microsoft.CodeAnalysis.NetAnalyzers'" />
+  </ItemGroup>
+
+  <!-- Configure MapsterChecker analyzer settings -->
+  <PropertyGroup>
+    <MapsterChecker_EnableNullabilityAnalysis Condition="'$(MapsterChecker_EnableNullabilityAnalysis)' == ''">true</MapsterChecker_EnableNullabilityAnalysis>
+    <MapsterChecker_EnableCompatibilityAnalysis Condition="'$(MapsterChecker_EnableCompatibilityAnalysis)' == ''">true</MapsterChecker_EnableCompatibilityAnalysis>
+    <MapsterChecker_EnablePropertyAnalysis Condition="'$(MapsterChecker_EnablePropertyAnalysis)' == ''">true</MapsterChecker_EnablePropertyAnalysis>
+  </PropertyGroup>
+
+  <!-- Pass configuration to the analyzer -->
+  <ItemGroup>
+    <Analyzer Include="$(MSBuildThisFileDirectory)..\analyzers\dotnet\cs\MapsterChecker.Analyzer.dll" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)MapsterChecker.Analyzer.props" />
+  </ItemGroup>
+
+  <!-- Configure analyzer additional files -->
+  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\.editorconfig')">
+    <EditorConfigFiles Include="$(MSBuildProjectDirectory)\.editorconfig" />
+  </ItemGroup>
+</Project>

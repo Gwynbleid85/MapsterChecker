@@ -25,6 +25,8 @@
   <ItemGroup>
     <None Include="bin\$(Configuration)\$(TargetFramework)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers\dotnet\cs\$(AssemblyName).dll" Visible="false" />
     <None Include="bin\$(Configuration)\$(TargetFramework)\$(AssemblyName).pdb" Pack="true" PackagePath="analyzers\dotnet\cs\$(AssemblyName).pdb" Visible="false" />
+    <None Include="build\$(AssemblyName).props" Pack="true" PackagePath="build\$(AssemblyName).props" />
+    <None Include="build\$(AssemblyName).targets" Pack="true" PackagePath="build\$(AssemblyName).targets" Condition="Exists('build\$(AssemblyName).targets')" />
   </ItemGroup>
 
   <ItemGroup>

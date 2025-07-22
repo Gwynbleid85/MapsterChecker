@@ -25,7 +25,7 @@ public class TestClass
 }";
 
         var expected = DiagnosticResult
-            .CompilerError("MAPSTER001")
+            .CompilerWarning("MAPSTER001")
             .WithSpan(9, 22, 9, 52)
             .WithArguments("string?", "string");
 
@@ -120,7 +120,7 @@ public class TestClass
 }";
 
         var expected = DiagnosticResult
-            .CompilerError("MAPSTER001")
+            .CompilerWarning("MAPSTER001")
             .WithSpan(10, 9, 10, 43)
             .WithArguments("string?", "string");
 
@@ -178,8 +178,8 @@ public class TestClass
 }";
 
         var expected = DiagnosticResult
-            .CompilerError("MAPSTER001")
-            .WithSpan(9, 22, 9, 44)
+            .CompilerWarning("MAPSTER001")
+            .WithSpan(9, 22, 9, 46)
             .WithArguments("int?", "int");
 
         await VerifyAnalyzerAsync(testCode, expected);
