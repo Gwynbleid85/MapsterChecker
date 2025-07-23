@@ -9,13 +9,10 @@
 
   <ItemGroup>
     <PackageReference Include="Mapster" Version="7.4.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\MapsterChecker.Analyzer\MapsterChecker.Analyzer.csproj">
-      <OutputItemType>Analyzer</OutputItemType>
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>
+    <PackageReference Include="MapsterChecker.Analyzer" Version="1.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
 </Project>

@@ -5,11 +5,13 @@
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Disable specific FxCop analyzers that may conflict -->
-    <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.Filename)' == 'Microsoft.CodeAnalysis.CSharp.NetAnalyzers'" />
-    <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.Filename)' == 'Microsoft.CodeAnalysis.NetAnalyzers'" />
-  </ItemGroup>
+  <!-- Remove conflicting analyzers using proper MSBuild syntax -->
+  <Target Name="RemoveConflictingAnalyzers" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="$([System.String]::Copy('%(Analyzer.Filename)').EndsWith('Microsoft.CodeAnalysis.CSharp.NetAnalyzers'))" />
+      <Analyzer Remove="@(Analyzer)" Condition="$([System.String]::Copy('%(Analyzer.Filename)').EndsWith('Microsoft.CodeAnalysis.NetAnalyzers'))" />
+    </ItemGroup>
+  </Target>
 
   <!-- Configure MapsterChecker analyzer settings -->
   <PropertyGroup>

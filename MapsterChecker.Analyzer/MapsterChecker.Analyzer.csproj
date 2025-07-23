@@ -7,11 +7,13 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>MapsterChecker.Analyzer</PackageId>
-    <PackageVersion>1.0.0</PackageVersion>
+    <PackageVersion>1.0.1</PackageVersion>
     <Authors>MapsterChecker</Authors>
     <Description>A Roslyn analyzer that checks Mapster.Adapt method calls for type compatibility issues, particularly nullable to non-nullable mappings.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageIcon>logo.png</PackageIcon>
     <PackageProjectUrl>https://github.com/mapsterchecker/mapsterchecker</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mapsterchecker/mapsterchecker</RepositoryUrl>
     <PackageTags>mapster;analyzer;roslyn;static-analysis;nullable</PackageTags>
@@ -30,7 +32,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="../LICENSE" Pack="true" PackagePath=""/>
     <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\docs\logo.png" Pack="true" PackagePath=""/>
   </ItemGroup>
 
 </Project>

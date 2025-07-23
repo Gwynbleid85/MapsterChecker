@@ -32,7 +32,7 @@ Install-Package MapsterChecker.Analyzer
 ### Via PackageReference
 
 ```xml
-<PackageReference Include="MapsterChecker.Analyzer" Version="1.0.0">
+<PackageReference Include="MapsterChecker.Analyzer" Version="1.0.1">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
 </PackageReference>
