@@ -255,7 +255,7 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
             {
                 PropertyPath = propertyPath,
                 SourceType = propertyPath, // Use property path as the first parameter
-                DestinationType = dangerousMethod, // Use dangerous method as the second parameter
+                DestinationType = dangerousMethod!, // Use dangerous method as the second parameter
                 IssueType = PropertyIssueType.CustomMappingDangerousExpression,
                 Severity = DiagnosticSeverity.Warning,
                 Description = $"Custom mapping expression uses '{dangerousMethod}' which may throw exceptions for invalid values"

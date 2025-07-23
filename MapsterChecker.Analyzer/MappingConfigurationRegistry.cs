@@ -84,7 +84,7 @@ public class MappingConfigurationRegistry
             {
                 _propertyMappings[typeKey] = new Dictionary<string, CustomMappingInfo>();
             }
-            _propertyMappings[typeKey][mappingInfo.PropertyName] = mappingInfo;
+            _propertyMappings[typeKey][mappingInfo.PropertyName!] = mappingInfo;
         }
     }
 

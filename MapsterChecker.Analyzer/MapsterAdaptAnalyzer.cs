@@ -49,7 +49,9 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
             
             foreach (var syntaxTree in compilationContext.Compilation.SyntaxTrees)
             {
+#pragma warning disable RS1030 // Do not invoke Compilation.GetSemanticModel() method within a diagnostic analyzer
                 var semanticModel = compilationContext.Compilation.GetSemanticModel(syntaxTree);
+#pragma warning restore RS1030
                 var root = syntaxTree.GetRoot(compilationContext.CancellationToken);
                 
                 foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
