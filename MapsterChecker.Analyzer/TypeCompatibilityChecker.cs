@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 
@@ -64,7 +65,17 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
     /// <returns>True if both types are complex and warrant property analysis</returns>
     private bool ShouldPerformPropertyAnalysis(ITypeSymbol sourceType, ITypeSymbol destinationType)
     {
-        return IsComplexUserDefinedType(sourceType) && IsComplexUserDefinedType(destinationType);
+        if (!IsComplexUserDefinedType(sourceType) || !IsComplexUserDefinedType(destinationType))
+            return false;
+            
+        // Check for common properties - if no common properties exist, report incompatibility
+        if (!HasCommonProperties(sourceType, destinationType))
+        {
+            // This will be handled by the type compatibility check, so we skip property analysis
+            return false;
+        }
+        
+        return true;
     }
 
     private bool IsComplexUserDefinedType(ITypeSymbol type)
@@ -82,6 +93,37 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
                typeName != "System.String";
     }
 
+    /// <summary>
+    /// Checks if two types have any common properties that can be mapped.
+    /// </summary>
+    /// <param name="sourceType">The source type</param>
+    /// <param name="destinationType">The destination type</param>
+    /// <returns>True if the types have at least one common property</returns>
+    private bool HasCommonProperties(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    {
+        var sourceProperties = GetMappableProperties(sourceType);
+        var destProperties = GetMappableProperties(destinationType);
+        
+        return destProperties.Any(dest => 
+            sourceProperties.Any(src => src.Name == dest.Name));
+    }
+
+    /// <summary>
+    /// Gets all public properties that can be mapped by Mapster.
+    /// </summary>
+    /// <param name="type">The type to analyze</param>
+    /// <returns>Collection of mappable properties</returns>
+    private IEnumerable<IPropertySymbol> GetMappableProperties(ITypeSymbol type)
+    {
+        return type.GetMembers()
+            .OfType<IPropertySymbol>()
+            .Where(prop => 
+                prop.DeclaredAccessibility == Accessibility.Public &&
+                !prop.IsStatic &&
+                prop.GetMethod != null &&
+                prop.SetMethod != null);
+    }
+
     private void CheckNullabilityCompatibility(ITypeSymbol sourceType, ITypeSymbol destinationType, TypeCompatibilityResult result)
     {
         var sourceNullability = GetNullabilityInfo(sourceType);
@@ -96,6 +138,28 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
 
     private void CheckTypeCompatibility(ITypeSymbol sourceType, ITypeSymbol destinationType, TypeCompatibilityResult result)
     {
+        // Check for problematic value/reference type mixing
+        var sourceUnderlyingType = GetUnderlyingType(sourceType);
+        var destUnderlyingType = GetUnderlyingType(destinationType);
+        
+        if ((sourceUnderlyingType.IsValueType && destUnderlyingType.IsReferenceType) ||
+            (sourceUnderlyingType.IsReferenceType && destUnderlyingType.IsValueType))
+        {
+            result.HasIncompatibilityIssue = true;
+            result.IncompatibilityIssueDescription = $"Cannot map between value type {sourceType.ToDisplayString()} and reference type {destinationType.ToDisplayString()}";
+            return;
+        }
+
+
+        // Check for complex types with no common properties first, before general compatibility check
+        if (IsComplexUserDefinedType(sourceType) && IsComplexUserDefinedType(destinationType) && 
+            !HasCommonProperties(sourceType, destinationType))
+        {
+            result.HasIncompatibilityIssue = true;
+            result.IncompatibilityIssueDescription = $"Types {sourceType.ToDisplayString()} and {destinationType.ToDisplayString()} have no common properties";
+            return;
+        }
+
         if (AreTypesCompatible(sourceType, destinationType))
             return;
 

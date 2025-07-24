@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using CleanResult;
 using Mapster;
 
 namespace SampleApp;
@@ -42,6 +43,19 @@ public class PersonDto
     public AddressDto Address { get; set; }
 }
 
+// Test classes for "no common properties" bug fix
+public class TypeWithNoCommonProps
+{
+    public string PropertyA { get; set; } = "A";
+    public int PropertyB { get; set; } = 1;
+}
+
+public class AnotherTypeWithNoCommonProps
+{
+    public string PropertyX { get; set; } = "X";
+    public int PropertyY { get; set; } = 2;
+}
+
 public class Program
 {
     public static void Main()
@@ -71,7 +85,7 @@ public class Program
         Console.WriteLine("Testing incompatible mappings (should trigger MAPSTER002 errors):");
         TestIncompatibleMappings();
     }
-
+    
     private static void TestValidMappings(Person person)
     {
         var dto = person.Adapt<PersonDto>();
@@ -102,20 +116,44 @@ public class Program
         Console.WriteLine($"⚠️ Nullable int to non-nullable: {nonNullableAge}");
     }
 
+
+    private static void CleanResultMappings()
+    {
+        string dataString = "An error occurred";
+        // Should trigger error
+        var errorResult = dataString.Adapt<Result>();
+        
+        var mappedDataString = errorResult.Adapt<string>(); 
+        
+        // Should trigger error
+        var errorResultWithData = dataString.Adapt<Result<string>>();
+    }
+
+    
     private static void TestIncompatibleMappings()
     {
-        Console.WriteLine("The following would cause MAPSTER002 errors and prevent compilation:");
-        Console.WriteLine("- int number = 42; var dateTime = number.Adapt<DateTime>();");
-        Console.WriteLine("- string text = \"hello\"; var guid = text.Adapt<Guid>();");
-        Console.WriteLine("These lines are commented out to allow the sample to run.");
+        Console.WriteLine("The following should now trigger MAPSTER002 errors:");
+        
+        // Test value type to reference type mapping (Bug fix #1)
+        int number = 42;
+        // var stringResult = number.Adapt<string>();
+        Console.WriteLine($"❌ Int to string (value to reference type): {stringResult}");
+
+        // Test reference type to value type mapping (Bug fix #1)  
+        string text = "hello";
+        // var intResult = text.Adapt<int>();
+        Console.WriteLine($"❌ String to int (reference to value type): {intResult}");
+
+        // Test types with no common properties (Bug fix #2)
+        var noCommonProps = new TypeWithNoCommonProps().Adapt<AnotherTypeWithNoCommonProps>();
+        Console.WriteLine($"❌ Types with no common properties: {noCommonProps}");
+        
+        Console.WriteLine();
+        Console.WriteLine("These should also trigger errors:");
+        Console.WriteLine("- int to DateTime, string to Guid, etc.");
         
         // Uncommenting these lines will cause MAPSTER002 build errors:
-        // int number = 42;
         // var dateTime = number.Adapt<DateTime>();
-        // Console.WriteLine($"❌ Int to DateTime (incompatible): {dateTime}");
-
-        // string text = "hello";
         // var guid = text.Adapt<Guid>();
-        // Console.WriteLine($"❌ String to Guid (incompatible): {guid}");
     }
 }

@@ -106,6 +106,27 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
 
         var sourceProperties = GetMappableProperties(sourceType);
         var destinationProperties = GetMappableProperties(destinationType);
+        
+        var hasAtleastOneSameProperty = sourceProperties.Any(srcProp => 
+            destinationProperties.Any(destProp => destProp.Name == srcProp.Name));
+        
+        if (!hasAtleastOneSameProperty)
+        {
+            // If no properties match, report all source properties as missing destination properties
+                issues.Add(new PropertyCompatibilityIssue
+                {
+                    PropertyPath = CombinePropertyPath(propertyPath, sourceType.Name),
+                    SourceType = sourceType.ToDisplayString(),
+                    DestinationType = "missing",
+                    IssueType = PropertyIssueType.MissingDestinationProperty,
+                    Severity = DiagnosticSeverity.Error,
+                    Description = $"No matching properties found in destination type '{destinationType.ToDisplayString()}' for source type '{sourceType.ToDisplayString()}'."
+                });
+            return new PropertyAnalysisResult
+            {
+                Issues = issues.ToImmutableArray()
+            };
+        }
 
         // Analyze each destination property to find mapping issues
         foreach (var destProp in destinationProperties)

@@ -8,11 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CleanResult" Version="1.2.3" />
     <PackageReference Include="Mapster" Version="7.4.0" />
-    <PackageReference Include="MapsterChecker.Analyzer" Version="1.0.1">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="MapsterChecker.Analyzer" Version="1.0.2" />
   </ItemGroup>
 
 </Project>
