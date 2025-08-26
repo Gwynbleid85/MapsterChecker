@@ -368,6 +368,44 @@ public class TestClass
         await VerifyAnalyzerAsync(testCode);
     }
 
+    [Fact]
+    public async Task AfterMappingConfiguration_ShouldSuppressPropertyIncompatibilityErrors()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceClass
+{
+    public string[] Data { get; set; } = new string[0];
+}
+
+public class DestClass
+{
+    public string Data { get; set; } = string.Empty;
+}
+
+public static class TestConfig
+{
+    static TestConfig()
+    {
+        TypeAdapterConfig<SourceClass, DestClass>
+            .NewConfig()
+            .AfterMapping((src, dest) => { dest.Data = string.Join("", "", src.Data); });
+    }
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceClass { Data = new[] { ""test1"", ""test2"" } };
+        var result = source.Adapt<DestClass>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
     private static async Task VerifyAnalyzerAsync(string source, params DiagnosticResult[] expected)
     {
         var test = new CSharpAnalyzerTest<MapsterAdaptAnalyzer, DefaultVerifier>

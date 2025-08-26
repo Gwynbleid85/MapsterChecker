@@ -43,7 +43,10 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
             ValidateCustomMappingConfigurations(sourceType, destinationType, result);
         }
         
-        if (ShouldPerformPropertyAnalysis(sourceType, destinationType))
+        // Check if there's an AfterMapping configuration that can handle property incompatibilities
+        var hasAfterMapping = configurationRegistry?.HasMappingOfType(sourceType, destinationType, CustomMappingType.AfterMapping) ?? false;
+        
+        if (ShouldPerformPropertyAnalysis(sourceType, destinationType, hasAfterMapping))
         {
             var propertyAnalyzer = new PropertyMappingAnalyzer(semanticModel, configurationRegistry);
             var propertyResult = propertyAnalyzer.AnalyzePropertyMapping(sourceType, destinationType);
@@ -59,14 +62,24 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
     /// <summary>
     /// Determines whether property-level analysis should be performed for the given types.
     /// Only complex user-defined types require recursive property analysis.
+    /// AfterMapping configurations can suppress property analysis since they handle incompatibilities.
     /// </summary>
     /// <param name="sourceType">The source type to check</param>
     /// <param name="destinationType">The destination type to check</param>
+    /// <param name="hasAfterMapping">Whether there's an AfterMapping configuration for these types</param>
     /// <returns>True if both types are complex and warrant property analysis</returns>
-    private bool ShouldPerformPropertyAnalysis(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    private bool ShouldPerformPropertyAnalysis(ITypeSymbol sourceType, ITypeSymbol destinationType, bool hasAfterMapping)
     {
         if (!IsComplexUserDefinedType(sourceType) || !IsComplexUserDefinedType(destinationType))
             return false;
+            
+        // If there's an AfterMapping configuration, it can handle property incompatibilities
+        // so we can be more lenient about property analysis
+        if (hasAfterMapping)
+        {
+            // Still perform basic checks but be less strict about incompatibilities
+            return HasCommonProperties(sourceType, destinationType);
+        }
             
         // Check for common properties - if no common properties exist, report incompatibility
         if (!HasCommonProperties(sourceType, destinationType))

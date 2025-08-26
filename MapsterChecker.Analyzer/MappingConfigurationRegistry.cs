@@ -89,6 +89,22 @@ public class MappingConfigurationRegistry
     }
 
     /// <summary>
+    /// Checks if there's a specific type of custom mapping configuration for the given types.
+    /// </summary>
+    /// <param name="sourceType">The source type</param>
+    /// <param name="destinationType">The destination type</param>
+    /// <param name="mappingType">The type of mapping to check for</param>
+    /// <returns>True if a mapping of the specified type exists</returns>
+    public bool HasMappingOfType(ITypeSymbol sourceType, ITypeSymbol destinationType, CustomMappingType mappingType)
+    {
+        var key = GetTypeKey(sourceType, destinationType);
+        if (!_typeMappings.TryGetValue(key, out var mappings))
+            return false;
+            
+        return mappings.Any(m => m.MappingType == mappingType);
+    }
+
+    /// <summary>
     /// Gets all custom mappings for debugging and testing purposes.
     /// </summary>
     /// <returns>All registered custom mappings</returns>
@@ -200,6 +216,11 @@ public enum CustomMappingType
     /// Conditional mapping using .Map(dest => dest.Property, src => expression, condition).
     /// </summary>
     ConditionalMapping,
+
+    /// <summary>
+    /// Post-mapping custom logic using .AfterMapping((src, dest) => { ... }).
+    /// </summary>
+    AfterMapping,
 
     /// <summary>
     /// Global settings configuration.

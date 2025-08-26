@@ -11,12 +11,16 @@ public class AfterMappingObjectA
 {
     public int Id { get; set; }
     public required string[] Data { get; set; }
+    
+    public string ExtraProperty { get; set; } = "Extra";
 }
 
 public class AfterMappingObjectB
 {
     public int Id { get; set; }
     public required string Data { get; set; }
+    
+    public string ExtraProperty { get; set; } = "Extra";
 }
 
 public class Address
@@ -186,7 +190,7 @@ public class Program
 
         // var _asdff = asdf.Adapt<string[]>();
 
-        // var objB = objA.Adapt<AfterMappingObjectB>();
-        // Console.WriteLine($"AfterMappingObjectB Data: {objB.Data}");
+        var objB = objA.Adapt<AfterMappingObjectB>();
+        Console.WriteLine($"AfterMappingObjectB Data: {objB.Data}");
     }
 }

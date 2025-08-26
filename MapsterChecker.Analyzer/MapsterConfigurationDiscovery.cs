@@ -215,6 +215,9 @@ public class MapsterConfigurationDiscovery
             case "MapWith":
                 ProcessMapWithCall(invocation, configInfo, semanticModel);
                 break;
+            case "AfterMapping":
+                ProcessAfterMappingCall(invocation, configInfo, semanticModel);
+                break;
         }
     }
 
@@ -284,6 +287,28 @@ public class MapsterConfigurationDiscovery
         {
             MappingType = CustomMappingType.ConstructorMapping,
             MappingExpression = constructorExpression,
+            SemanticModel = semanticModel,
+            Location = invocation.GetLocation()
+        };
+
+        _registry.RegisterMapping(configInfo.SourceType, configInfo.DestinationType, mappingInfo);
+    }
+
+    /// <summary>
+    /// Processes an .AfterMapping() configuration call.
+    /// AfterMapping allows custom logic to be executed after the automatic mapping is complete.
+    /// </summary>
+    private void ProcessAfterMappingCall(InvocationExpressionSyntax invocation, TypeConfigurationInfo configInfo, SemanticModel semanticModel)
+    {
+        var arguments = invocation.ArgumentList.Arguments;
+        if (arguments.Count < 1) return;
+
+        var afterMappingExpression = arguments[0].Expression;
+
+        var mappingInfo = new CustomMappingInfo
+        {
+            MappingType = CustomMappingType.AfterMapping,
+            MappingExpression = afterMappingExpression,
             SemanticModel = semanticModel,
             Location = invocation.GetLocation()
         };

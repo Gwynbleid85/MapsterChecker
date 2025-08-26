@@ -164,9 +164,28 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
                 continue;
             }
 
-            // Check direct property compatibility (nullable, type compatibility)
-            var directCompatibilityResult = CheckDirectPropertyCompatibility(sourceProp, destProp, currentPropertyPath);
-            issues.AddRange(directCompatibilityResult);
+            // Check if there's an AfterMapping configuration that can handle property incompatibilities
+            var hasAfterMapping = configurationRegistry != null && _rootSourceType != null && _rootDestinationType != null && 
+                                   configurationRegistry.HasMappingOfType(_rootSourceType, _rootDestinationType, CustomMappingType.AfterMapping);
+
+            if (hasAfterMapping)
+            {
+                // With AfterMapping, we can be more lenient about property incompatibilities
+                // Only report severe issues like missing properties, but skip type incompatibility errors
+                // since AfterMapping can handle the conversion
+                
+                // Still check for nullability issues as they can be important
+                var nullabilityIssues = CheckDirectPropertyCompatibility(sourceProp, destProp, currentPropertyPath)
+                    .Where(issue => issue.IssueType == PropertyIssueType.NullabilityMismatch)
+                    .ToList();
+                issues.AddRange(nullabilityIssues);
+            }
+            else
+            {
+                // Check direct property compatibility (nullable, type compatibility)
+                var directCompatibilityResult = CheckDirectPropertyCompatibility(sourceProp, destProp, currentPropertyPath);
+                issues.AddRange(directCompatibilityResult);
+            }
 
             // Recursively analyze nested complex types
             if (IsComplexType(sourceProp.Type) && IsComplexType(destProp.Type))
