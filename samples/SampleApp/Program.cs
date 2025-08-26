@@ -1,10 +1,23 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using CleanResult;
 using Mapster;
 
 namespace SampleApp;
 
+
+public class AfterMappingObjectA
+{
+    public int Id { get; set; }
+    public required string[] Data { get; set; }
+}
+
+public class AfterMappingObjectB
+{
+    public int Id { get; set; }
+    public required string Data { get; set; }
+}
 
 public class Address
 {
@@ -84,6 +97,10 @@ public class Program
         Console.WriteLine();
         Console.WriteLine("Testing incompatible mappings (should trigger MAPSTER002 errors):");
         TestIncompatibleMappings();
+        
+        Console.WriteLine();
+        Console.WriteLine("Testing CleanResult mappings (should trigger MAPSTER002 errors):");
+        TestAfterMapping();
     }
     
     private static void TestValidMappings(Person person)
@@ -137,17 +154,17 @@ public class Program
         // Test value type to reference type mapping (Bug fix #1)
         int number = 42;
         // var stringResult = number.Adapt<string>();
-        Console.WriteLine($"❌ Int to string (value to reference type): {stringResult}");
+        // Console.WriteLine($"❌ Int to string (value to reference type): {stringResult}");
 
         // Test reference type to value type mapping (Bug fix #1)  
         string text = "hello";
         // var intResult = text.Adapt<int>();
-        Console.WriteLine($"❌ String to int (reference to value type): {intResult}");
+        // Console.WriteLine($"❌ String to int (reference to value type): {intResult}");
 
         // Test types with no common properties (Bug fix #2)
         var noCommonProps = new TypeWithNoCommonProps().Adapt<AnotherTypeWithNoCommonProps>();
         Console.WriteLine($"❌ Types with no common properties: {noCommonProps}");
-        
+
         Console.WriteLine();
         Console.WriteLine("These should also trigger errors:");
         Console.WriteLine("- int to DateTime, string to Guid, etc.");
@@ -155,5 +172,21 @@ public class Program
         // Uncommenting these lines will cause MAPSTER002 build errors:
         // var dateTime = number.Adapt<DateTime>();
         // var guid = text.Adapt<Guid>();
+    }
+    
+    private static void TestAfterMapping()
+    {
+        var objA = new AfterMappingObjectA
+        {
+            Id = 1,
+            Data = ["one", "two", "three"]
+        };
+
+        var asdf = "adf";
+
+        // var _asdff = asdf.Adapt<string[]>();
+
+        // var objB = objA.Adapt<AfterMappingObjectB>();
+        // Console.WriteLine($"AfterMappingObjectB Data: {objB.Data}");
     }
 }

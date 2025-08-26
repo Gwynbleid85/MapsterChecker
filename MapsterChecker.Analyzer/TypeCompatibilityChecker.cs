@@ -175,6 +175,19 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
         if (SymbolEqualityComparer.Default.Equals(sourceUnderlyingType, destUnderlyingType))
             return true;
 
+        // Check for collection type mismatches early
+        var sourceIsCollection = IsCollectionType(sourceUnderlyingType);
+        var destIsCollection = IsCollectionType(destUnderlyingType);
+        
+        // If one is a collection and the other is not, they're incompatible
+        // Exception: Allow compatible collection-to-collection mappings
+        if (sourceIsCollection != destIsCollection)
+        {
+            // Special case: string is technically IEnumerable<char> but we treat it as non-collection
+            if (!IsStringType(sourceUnderlyingType) && !IsStringType(destUnderlyingType))
+                return false;
+        }
+
         if (HasImplicitConversion(sourceUnderlyingType, destUnderlyingType))
             return true;
 
@@ -304,20 +317,53 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
 
     private bool AreReferenceTypesCompatible(ITypeSymbol sourceType, ITypeSymbol destinationType)
     {
+        // Check for collection type mismatches first
+        var sourceIsCollection = IsCollectionType(sourceType);
+        var destIsCollection = IsCollectionType(destinationType);
+        
+        // If one is a collection and the other is not, they're incompatible
+        if (sourceIsCollection != destIsCollection)
+        {
+            // Special case: string is technically IEnumerable<char> but we treat it as non-collection
+            if (!IsStringType(sourceType) && !IsStringType(destinationType))
+                return false;
+        }
+        
+        // If both are collections, check if they're compatible collection types
+        if (sourceIsCollection && destIsCollection)
+        {
+            return AreCollectionsCompatible(sourceType, destinationType);
+        }
+
+        // For non-collection reference types
         if (sourceType.TypeKind == TypeKind.Class && destinationType.TypeKind == TypeKind.Class)
+        {
+            var sourceTypeName = sourceType.ToDisplayString();
+            var destTypeName = destinationType.ToDisplayString();
+            
+            // Handle string compatibility (including nullable variants)
+            var sourceBaseType = GetUnderlyingType(sourceType).ToDisplayString();
+            var destBaseType = GetUnderlyingType(destinationType).ToDisplayString();
+            
+            if (sourceBaseType == "string" && destBaseType == "string")
+                return true;
+                
+            // Object can accept anything
+            if (destTypeName == "object")
+                return true;
+            
+            // For complex user-defined types, check if they have common properties
+            if (IsComplexUserDefinedType(sourceType) && IsComplexUserDefinedType(destinationType))
+            {
+                return HasCommonProperties(sourceType, destinationType);
+            }
+            
+            // For other class types, be more permissive by default (let Mapster handle it)
             return true;
+        }
 
         if (sourceType.TypeKind == TypeKind.Interface || destinationType.TypeKind == TypeKind.Interface)
             return true;
-
-        var sourceTypeName = sourceType.ToDisplayString();
-        var destTypeName = destinationType.ToDisplayString();
-
-        if (sourceTypeName == "string" || destTypeName == "string")
-        {
-            var stringCompatibleTypes = new[] { "string", "object", "System.IComparable", "System.IEnumerable" };
-            return stringCompatibleTypes.Contains(sourceTypeName) || stringCompatibleTypes.Contains(destTypeName);
-        }
 
         return false;
     }
@@ -441,6 +487,112 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
                (type is INamedTypeSymbol namedType && 
                 namedType.IsGenericType && 
                 namedType.ConstructedFrom.ToDisplayString() == "System.Nullable<T>");
+    }
+
+    /// <summary>
+    /// Checks if a type is a collection type (array, List, IEnumerable, etc.)
+    /// Excludes string even though it implements IEnumerable<char>.
+    /// </summary>
+    private bool IsCollectionType(ITypeSymbol type)
+    {
+        if (type == null) return false;
+        
+        // String is technically IEnumerable<char> but we don't treat it as a collection
+        if (IsStringType(type)) return false;
+        
+        // Check for arrays
+        if (type.TypeKind == TypeKind.Array)
+            return true;
+        
+        // Check for generic collection types
+        if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
+        {
+            var typeName = namedType.ConstructedFrom.ToDisplayString();
+            var collectionTypes = new[]
+            {
+                "System.Collections.Generic.List<T>",
+                "System.Collections.Generic.IList<T>",
+                "System.Collections.Generic.IEnumerable<T>",
+                "System.Collections.Generic.ICollection<T>",
+                "System.Collections.Generic.HashSet<T>",
+                "System.Collections.Generic.Dictionary<TKey, TValue>",
+                "System.Collections.Generic.IDictionary<TKey, TValue>",
+                "System.Collections.Generic.Queue<T>",
+                "System.Collections.Generic.Stack<T>",
+                "System.Collections.ObjectModel.Collection<T>",
+                "System.Collections.ObjectModel.ReadOnlyCollection<T>",
+                "System.Collections.Immutable.ImmutableArray<T>",
+                "System.Collections.Immutable.ImmutableList<T>"
+            };
+            
+            if (collectionTypes.Any(ct => typeName == ct || typeName.StartsWith(ct.Replace("<T>", "<")) || 
+                                          typeName.StartsWith(ct.Replace("<TKey, TValue>", "<"))))
+            {
+                return true;
+            }
+        }
+        
+        // Check if type implements IEnumerable (non-generic)
+        var interfaces = type.AllInterfaces;
+        return interfaces.Any(i => i.ToDisplayString() == "System.Collections.IEnumerable" ||
+                                   i.ToDisplayString().StartsWith("System.Collections.Generic.IEnumerable<"));
+    }
+
+    /// <summary>
+    /// Checks if a type is the string type.
+    /// </summary>
+    private bool IsStringType(ITypeSymbol type)
+    {
+        return type?.SpecialType == SpecialType.System_String;
+    }
+
+    /// <summary>
+    /// Checks if two collection types are compatible for mapping.
+    /// </summary>
+    private bool AreCollectionsCompatible(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    {
+        // For now, allow mapping between different collection types if they have the same element type
+        // This is a simplified check - Mapster can handle List<T> to IEnumerable<T> etc.
+        
+        var sourceElementType = GetCollectionElementType(sourceType);
+        var destElementType = GetCollectionElementType(destinationType);
+        
+        if (sourceElementType == null || destElementType == null)
+            return false;
+            
+        // Check if element types are compatible
+        return AreTypesCompatible(sourceElementType, destElementType);
+    }
+
+    /// <summary>
+    /// Gets the element type of a collection.
+    /// </summary>
+    private ITypeSymbol? GetCollectionElementType(ITypeSymbol collectionType)
+    {
+        // Handle arrays
+        if (collectionType is IArrayTypeSymbol arrayType)
+            return arrayType.ElementType;
+        
+        // Handle generic collections
+        if (collectionType is INamedTypeSymbol namedType && namedType.IsGenericType)
+        {
+            // For Dictionary and similar types, we might want the value type
+            if (namedType.TypeArguments.Length > 0)
+            {
+                // For Dictionary<K,V>, this returns K, but that's okay for basic compatibility
+                return namedType.TypeArguments[0];
+            }
+        }
+        
+        // Try to find IEnumerable<T> in interfaces
+        var enumerableInterface = collectionType.AllInterfaces
+            .FirstOrDefault(i => i.IsGenericType && 
+                                i.ConstructedFrom.ToDisplayString() == "System.Collections.Generic.IEnumerable<T>");
+        
+        if (enumerableInterface != null && enumerableInterface.TypeArguments.Length > 0)
+            return enumerableInterface.TypeArguments[0];
+        
+        return null;
     }
 
     /// <summary>

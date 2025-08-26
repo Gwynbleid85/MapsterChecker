@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using Mapster;
 
 namespace SampleApp;
@@ -16,6 +18,11 @@ public class MapsterConfig
             .NewConfig()
             .Map(dest => dest.PropertyX, src => src.PropertyA)
             .Map(dest => dest.PropertyY, src => src.PropertyB);
+        
+        // TypeAdapterConfig<AfterMappingObjectA, AfterMappingObjectB>
+        //     .NewConfig()
+        //     .AfterMapping((src, dest) => { dest.Data = string.Join(", ", src.Data ); });
+        //     
     }
     
     
