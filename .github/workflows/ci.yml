@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: |
+          8.x
+          9.x
+
+    - name: Restore dependencies
+      run: dotnet restore MapsterChecker.sln
+
+    - name: Build solution
+      run: dotnet build MapsterChecker.sln --configuration Release --no-restore
+
+    - name: Run tests
+      run: dotnet test MapsterChecker.Tests/MapsterChecker.Tests.csproj --no-build --configuration Release --verbosity normal --logger:"console;verbosity=detailed"
+
+    - name: Build NuGet package (dry run)
+      run: |
+        dotnet pack MapsterChecker.Analyzer/MapsterChecker.Analyzer.csproj --configuration Release --no-build --output ./test-nupkg
+        echo "Package built successfully:"
+        ls -la ./test-nupkg/
+
+    - name: Validate package
+      run: |
+        # Install NuGet Package Explorer CLI or similar tool for validation
+        dotnet tool install --global dotnet-validate --version 0.0.1-preview.304 || true
+        
+        # Basic validation - check if package was created
+        if [ ! -f ./test-nupkg/*.nupkg ]; then
+          echo "Error: No NuGet package was created"
+          exit 1
+        fi
+        
+        echo "Package validation passed"
