@@ -8,7 +8,7 @@
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>MapsterChecker.Analyzer</PackageId>
-    <PackageVersion>1.0.2</PackageVersion>
+    <PackageVersion>1.0.3</PackageVersion>
     <Authors>MapsterChecker</Authors>
     <Description>A Roslyn analyzer that checks Mapster.Adapt method calls for type compatibility issues, particularly nullable to non-nullable mappings.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
