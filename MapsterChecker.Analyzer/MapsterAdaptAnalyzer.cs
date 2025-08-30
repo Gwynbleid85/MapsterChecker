@@ -124,7 +124,8 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         var compatibilityChecker = new TypeCompatibilityChecker(context.SemanticModel, registry);
         var compatibilityResult = compatibilityChecker.CheckCompatibility(
             adaptCallInfo.SourceType, 
-            adaptCallInfo.DestinationType);
+            adaptCallInfo.DestinationType,
+            adaptCallInfo.OverriddenProperties);
 
         ReportDiagnostics(context, invocation, compatibilityResult, adaptCallInfo);
     }
@@ -257,7 +258,44 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         if (destinationType == null)
             return null;
 
-        return new AdaptCallInfo(sourceType, destinationType, invocation.GetLocation());
+        // Check if this Adapt call is part of a with expression
+        var overriddenProperties = ExtractWithExpressionProperties(invocation, semanticModel);
+
+        return new AdaptCallInfo(sourceType, destinationType, invocation.GetLocation(), overriddenProperties);
+    }
+
+    /// <summary>
+    /// Extracts property names that are overridden in a with expression if the Adapt call is part of one.
+    /// </summary>
+    /// <param name="invocation">The Adapt invocation to check</param>
+    /// <param name="semanticModel">The semantic model for analysis</param>
+    /// <returns>Set of property names overridden in the with expression, or empty set if not a with expression</returns>
+    private static HashSet<string> ExtractWithExpressionProperties(InvocationExpressionSyntax invocation, SemanticModel semanticModel)
+    {
+        var overriddenProperties = new HashSet<string>();
+
+        // Check if the parent of the invocation is a with expression
+        var parent = invocation.Parent;
+        if (parent is WithExpressionSyntax withExpression && withExpression.Expression == invocation)
+        {
+            // Extract property names from the initializer
+            if (withExpression.Initializer != null)
+            {
+                foreach (var expression in withExpression.Initializer.Expressions)
+                {
+                    if (expression is AssignmentExpressionSyntax assignment)
+                    {
+                        // Get the property name from the left side of the assignment
+                        if (assignment.Left is IdentifierNameSyntax identifier)
+                        {
+                            overriddenProperties.Add(identifier.Identifier.ValueText);
+                        }
+                    }
+                }
+            }
+        }
+
+        return overriddenProperties;
     }
 
     private static void ReportDiagnostics(
@@ -318,12 +356,13 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
 
     /// <summary>
     /// Contains information about a detected Mapster.Adapt method call.
-    /// Encapsulates the source type, destination type, and location for diagnostic reporting.
+    /// Encapsulates the source type, destination type, location, and any overridden properties from a with expression.
     /// </summary>
     /// <param name="sourceType">The source type being mapped from</param>
     /// <param name="destinationType">The destination type being mapped to</param>
     /// <param name="location">The source location of the Adapt call for diagnostic reporting</param>
-    private class AdaptCallInfo(ITypeSymbol sourceType, ITypeSymbol destinationType, Location location)
+    /// <param name="overriddenProperties">Properties overridden in a with expression, if any</param>
+    private class AdaptCallInfo(ITypeSymbol sourceType, ITypeSymbol destinationType, Location location, HashSet<string>? overriddenProperties = null)
     {
         /// <summary>
         /// Gets the source type being mapped from.
@@ -339,5 +378,11 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         /// Gets the source location of the Adapt call for diagnostic reporting.
         /// </summary>
         public Location Location { get; } = location;
+        
+        /// <summary>
+        /// Gets the set of property names that are overridden in a with expression.
+        /// These properties should be excluded from compatibility checking.
+        /// </summary>
+        public HashSet<string> OverriddenProperties { get; } = overriddenProperties ?? new HashSet<string>();
     }
 }

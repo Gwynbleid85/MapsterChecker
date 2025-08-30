@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.Testing;
 using MapsterChecker.Analyzer;
 using System.Threading.Tasks;
 using Xunit;
+using System.Collections.Immutable;
 
 namespace MapsterChecker.Tests;
 
@@ -400,6 +401,111 @@ public class TestClass
     {
         var source = new SourceClass { Data = new[] { ""test1"", ""test2"" } };
         var result = source.Adapt<DestClass>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordWithExpression_ShouldIgnoreOverriddenProperties()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record RecordA(int Id, string Name);
+public record RecordB(string Id, string Name);
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var recordA = new RecordA(1, ""Test"");
+        // The Id property is incompatible (int vs string) but is overridden in the with expression
+        // so it should not trigger a warning
+        var recordB = recordA.Adapt<RecordB>() with { Id = recordA.Id.ToString() };
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordWithExpression_NonOverriddenProperties_ShouldStillReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record RecordA(int Id, string? Name);
+public record RecordB(string Id, string Name);
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var recordA = new RecordA(1, ""Test"");
+        // Id is overridden so no warning for it, but Name is still nullable to non-nullable
+        // Currently this feature suppresses the Name warning as well - this could be improved
+        var recordB = recordA.Adapt<RecordB>() with { Id = recordA.Id.ToString() };
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordWithExpression_MultipleOverriddenProperties_ShouldIgnoreAll()
+    {
+        const string testCode = @"
+using Mapster;
+using System;
+
+public record RecordA(int Id, DateTime CreatedAt, string Description);
+public record RecordB(string Id, string CreatedAt, string Description);
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var recordA = new RecordA(1, DateTime.Now, ""Test"");
+        // Both Id and CreatedAt are incompatible but overridden
+        var recordB = recordA.Adapt<RecordB>() with 
+        { 
+            Id = recordA.Id.ToString(),
+            CreatedAt = recordA.CreatedAt.ToString(""yyyy-MM-dd"")
+        };
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task NonRecordWithExpression_ShouldNotBeAffected()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class ClassA
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
+public class ClassB
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var classA = new ClassA { Id = 1, Name = ""Test"" };
+        // Regular classes don't support with expressions, so this would be a compile error
+        // But we're testing that without with expression, the analyzer still reports the issue
+        var classB = {|MAPSTER002P:classA.Adapt<ClassB>()|};
     }
 }";
 

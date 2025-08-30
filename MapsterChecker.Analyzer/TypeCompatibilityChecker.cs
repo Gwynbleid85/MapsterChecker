@@ -22,8 +22,9 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
     /// </summary>
     /// <param name="sourceType">The source type being mapped from</param>
     /// <param name="destinationType">The destination type being mapped to</param>
+    /// <param name="overriddenProperties">Properties that are overridden in a with expression and should be excluded from checking</param>
     /// <returns>Complete compatibility analysis result with any issues found</returns>
-    public TypeCompatibilityResult CheckCompatibility(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    public TypeCompatibilityResult CheckCompatibility(ITypeSymbol sourceType, ITypeSymbol destinationType, HashSet<string>? overriddenProperties = null)
     {
         var result = new TypeCompatibilityResult();
 
@@ -49,7 +50,7 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
         if (ShouldPerformPropertyAnalysis(sourceType, destinationType, hasAfterMapping))
         {
             var propertyAnalyzer = new PropertyMappingAnalyzer(semanticModel, configurationRegistry);
-            var propertyResult = propertyAnalyzer.AnalyzePropertyMapping(sourceType, destinationType);
+            var propertyResult = propertyAnalyzer.AnalyzePropertyMapping(sourceType, destinationType, overriddenProperties);
             
             result.PropertyIssues = propertyResult.Issues;
             result.HasCircularReferences = propertyResult.HasCircularReference;

@@ -7,6 +7,15 @@ using Mapster;
 namespace SampleApp;
 
 
+public record RecordA(int Id, string Name);
+public record RecordB(int Id, string Name);
+
+public record RecordC(string Id, string Name);
+public record RecordD(string Id, string[] Name, int Age);
+public record RecordE(string Id, string Name, int Age);
+
+
+
 public class AfterMappingObjectA
 {
     public int Id { get; set; }
@@ -105,6 +114,10 @@ public class Program
         Console.WriteLine();
         Console.WriteLine("Testing CleanResult mappings (should trigger MAPSTER002 errors):");
         TestAfterMapping();
+        
+        Console.WriteLine();
+        Console.WriteLine("Testing with keyword mappings (should not trigger warnings):");
+        TestWithKeyword();
     }
     
     private static void TestValidMappings(Person person)
@@ -186,11 +199,23 @@ public class Program
             Data = ["one", "two", "three"]
         };
 
-        var asdf = "adf";
+        int[] asdf = [];
 
         // var _asdff = asdf.Adapt<string[]>();
 
         var objB = objA.Adapt<AfterMappingObjectB>();
         Console.WriteLine($"AfterMappingObjectB Data: {objB.Data}");
+    }
+    
+    private static void TestWithKeyword()
+    {
+        
+        var recordA = new RecordA(1, "Test");
+        
+        var recordC = recordA.Adapt<RecordC>() with {Id = recordA.Id.ToString()};
+
+        var recordD = recordA.Adapt<RecordD>() with {Id = recordA.Id.ToString(), Name = [recordA.Name]};
+        
+        var recordE = recordA.Adapt<RecordE>() with {Id = recordA.Id.ToString(), Age = 42};
     }
 }

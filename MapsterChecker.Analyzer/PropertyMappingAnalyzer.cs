@@ -29,8 +29,9 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
     /// </summary>
     /// <param name="sourceType">The source type to analyze</param>
     /// <param name="destinationType">The destination type to analyze</param>
+    /// <param name="overriddenProperties">Properties that are overridden in a with expression and should be excluded from checking</param>
     /// <returns>Analysis result containing any property compatibility issues found</returns>
-    public PropertyAnalysisResult AnalyzePropertyMapping(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    public PropertyAnalysisResult AnalyzePropertyMapping(ITypeSymbol sourceType, ITypeSymbol destinationType, HashSet<string>? overriddenProperties = null)
     {
         // Set root types for custom mapping lookups
         _rootSourceType = sourceType;
@@ -58,7 +59,7 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
         
         try
         {
-            var result = PerformPropertyAnalysis(sourceType, destinationType, "", 0);
+            var result = PerformPropertyAnalysis(sourceType, destinationType, "", 0, overriddenProperties);
             _analysisCache[cacheKey] = result;
             return result;
         }
@@ -76,12 +77,14 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
     /// <param name="destinationType">The destination type to analyze</param>
     /// <param name="propertyPath">The current property path for nested objects (e.g., "Address.Street")</param>
     /// <param name="currentDepth">Current recursion depth to prevent infinite recursion</param>
+    /// <param name="overriddenProperties">Properties that are overridden in a with expression and should be excluded from checking</param>
     /// <returns>Analysis result with any property compatibility issues found</returns>
     private PropertyAnalysisResult PerformPropertyAnalysis(
         ITypeSymbol sourceType, 
         ITypeSymbol destinationType,
         string propertyPath,
-        int currentDepth)
+        int currentDepth,
+        HashSet<string>? overriddenProperties = null)
     {
         var issues = new List<PropertyCompatibilityIssue>();
         
@@ -131,6 +134,12 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
         // Analyze each destination property to find mapping issues
         foreach (var destProp in destinationProperties)
         {
+            // Skip properties that are overridden in a with expression (only at the root level)
+            if (string.IsNullOrEmpty(propertyPath) && overriddenProperties != null && overriddenProperties.Contains(destProp.Name))
+            {
+                continue;
+            }
+            
             var sourceProp = FindMatchingProperty(sourceProperties, destProp);
             
             // Check for missing source properties
@@ -194,7 +203,8 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
                     sourceProp.Type, 
                     destProp.Type, 
                     currentPropertyPath, 
-                    currentDepth + 1);
+                    currentDepth + 1,
+                    overriddenProperties);
                 
                 issues.AddRange(nestedResult.Issues);
             }
