@@ -512,6 +512,204 @@ public class TestClass
         await VerifyAnalyzerAsync(testCode);
     }
 
+    #region Null-Forgiving Operator Tests
+
+    [Fact]
+    public async Task NullForgivingOperator_SuppressesNullabilityWarning()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        string? nullableString = ""test"";
+        // The null-forgiving operator should suppress MAPSTER001
+        var result = nullableString.Adapt<string>()!;
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task NullForgivingOperator_DoesNotSuppressErrors()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        int number = 42;
+        // The null-forgiving operator should NOT suppress MAPSTER002 (error)
+        var result = {|MAPSTER002:number.Adapt<System.DateTime>()|}!;
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task NullForgivingOperator_WithMultipleWarnings_SuppressesAll()
+    {
+        const string testCode = @"
+using Mapster;
+using System;
+
+public class Person
+{
+    public string? Name { get; set; }
+    public int? Age { get; set; }
+    public DateTime? BirthDate { get; set; }
+}
+
+public class PersonDto
+{
+    public string Name { get; set; } = string.Empty;
+    public int Age { get; set; }
+    public DateTime BirthDate { get; set; }
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var person = new Person { Name = ""John"", Age = 30 };
+        // Should suppress all property nullability warnings
+        var result = person.Adapt<PersonDto>()!;
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task NullForgivingOperator_ComplexTypes_SuppressesPropertyWarnings()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class Address
+{
+    public string? Street { get; set; }
+    public string? City { get; set; }
+}
+
+public class AddressDto
+{
+    public string Street { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var address = new Address { Street = ""Main St"", City = ""NYC"" };
+        // Should suppress property-level nullability warnings
+        var dto = address.Adapt<AddressDto>()!;
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task WithoutNullForgivingOperator_StillReportsWarning()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        string? nullableString = ""test"";
+        // Without null-forgiving operator, should still report MAPSTER001
+        var result = {|MAPSTER001:nullableString.Adapt<string>()|};
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task NullForgivingOperator_WithChainedMethods_SuppressesWarning()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        string? nullableString = ""test"";
+        // Even with chained calls after, should suppress warning
+        var result = nullableString.Adapt<string>()!.ToUpper();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task NullForgivingOperator_NestedInExpression_SuppressesWarning()
+    {
+        const string testCode = @"
+using Mapster;
+using System.Collections.Generic;
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        string? nullableString = ""test"";
+        // Should suppress warning even when nested in other expressions
+        var list = new List<string> { nullableString.Adapt<string>()! };
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task NullForgivingOperator_WithDestinationParameter_ReturnsSelf()
+    {
+        // Note: The non-generic Adapt(destination) method returns void, 
+        // so the null-forgiving operator cannot be applied to it.
+        // This test verifies that the generic Adapt method with destination works correctly.
+        const string testCode = @"
+using Mapster;
+
+public class Source
+{
+    public string? Name { get; set; }
+}
+
+public class Destination
+{
+    public string Name { get; set; } = string.Empty;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new Source { Name = ""test"" };
+        var destination = new Destination();
+        // Generic Adapt that returns the destination can have null-forgiving operator
+        var result = source.Adapt(destination)!;
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    #endregion
+
     private static async Task VerifyAnalyzerAsync(string source, params DiagnosticResult[] expected)
     {
         var test = new CSharpAnalyzerTest<MapsterAdaptAnalyzer, DefaultVerifier>

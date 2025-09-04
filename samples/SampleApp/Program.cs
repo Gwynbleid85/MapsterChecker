@@ -14,7 +14,11 @@ public record RecordC(string Id, string Name);
 public record RecordD(string Id, string[] Name, int Age);
 public record RecordE(string Id, string Name, int Age);
 
-
+public partial class PartialClassA
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+}
 
 public class AfterMappingObjectA
 {
@@ -34,10 +38,10 @@ public class AfterMappingObjectB
 
 public class Address
 {
-    public string? Street { get; set; }
-    public string? City { get; set; }
-    public string? State { get; set; }
-    public string? ZipCode { get; set; }
+    public string Street { get; set; }
+    public int City { get; set; }
+    public string State { get; set; }
+    public string ZipCode { get; set; }
 }
 
 public class Person
@@ -53,10 +57,10 @@ public class Person
 
 public class AddressDto
 {
-    public string? Street { get; set; }
-    public string? City { get; set; }
-    public string? State { get; set; }
-    public string? ZipCode { get; set; }
+    public required string Street { get; set; }
+    public required int City { get; set; }
+    public required string State { get; set; }
+    public required string ZipCode { get; set; }
 }
 
 public class PersonDto
@@ -118,6 +122,24 @@ public class Program
         Console.WriteLine();
         Console.WriteLine("Testing with keyword mappings (should not trigger warnings):");
         TestWithKeyword();
+    }
+    
+    private static void TestNullableMappings()
+    {
+        string? nullableString = null;
+        var nonNullableString = nullableString.Adapt<string>();
+        
+        var address = new Address
+        {
+            Street = "123 Main St",
+            City = 456,
+            State = "CA",
+            ZipCode = "90210"
+        };
+        
+        var addressDto = address.Adapt<AddressDto>();
+        
+        Console.WriteLine($"⚠️ Nullable to non-nullable string: {nonNullableString}");
     }
     
     private static void TestValidMappings(Person person)
@@ -217,5 +239,26 @@ public class Program
         var recordD = recordA.Adapt<RecordD>() with {Id = recordA.Id.ToString(), Name = [recordA.Name]};
         
         var recordE = recordA.Adapt<RecordE>() with {Id = recordA.Id.ToString(), Age = 42};
+    }
+
+    private static void TestPartialClass()
+    {
+        var partialClass = new PartialClassA
+        {
+            Id = 1,
+            Name = "Test"
+        };
+        
+        var recordA = partialClass.Adapt<RecordA>();
+    }
+
+
+    private static void TestWarningSuppression()
+    {
+
+        var address = new Address();
+        
+        var addressDto = address.Adapt<AddressDto>()!;
+
     }
 }

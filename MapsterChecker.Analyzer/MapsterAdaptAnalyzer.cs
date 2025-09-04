@@ -298,13 +298,29 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         return overriddenProperties;
     }
 
+    /// <summary>
+    /// Checks if the invocation has a null-forgiving operator (!) applied to it.
+    /// When present, warnings should be suppressed but errors should still be reported.
+    /// </summary>
+    /// <param name="invocation">The invocation expression to check</param>
+    /// <returns>True if the invocation has a null-forgiving operator</returns>
+    private static bool HasNullForgivingOperator(InvocationExpressionSyntax invocation)
+    {
+        // Check if the parent is a PostfixUnaryExpression with SuppressNullableWarning kind
+        var parent = invocation.Parent;
+        return parent is PostfixUnaryExpressionSyntax postfixUnary &&
+               postfixUnary.Kind() == SyntaxKind.SuppressNullableWarningExpression;
+    }
+
     private static void ReportDiagnostics(
         SyntaxNodeAnalysisContext context,
         InvocationExpressionSyntax invocation,
         TypeCompatibilityResult compatibilityResult,
         AdaptCallInfo adaptCallInfo)
     {
-        if (compatibilityResult.HasNullabilityIssue)
+        // Check if null-forgiving operator is present - if so, suppress warnings
+        var suppressWarnings = HasNullForgivingOperator(invocation);
+        if (compatibilityResult.HasNullabilityIssue && !suppressWarnings)
         {
             var diagnostic = Diagnostic.Create(
                 DiagnosticDescriptors.NullableToNonNullableMapping,
@@ -317,6 +333,7 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
 
         if (compatibilityResult.HasIncompatibilityIssue)
         {
+            // Errors are always reported, even with null-forgiving operator
             var diagnostic = Diagnostic.Create(
                 DiagnosticDescriptors.IncompatibleTypeMapping,
                 adaptCallInfo.Location,
@@ -330,6 +347,10 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
         {
             var diagnosticDescriptor = GetDiagnosticDescriptorForPropertyIssue(propertyIssue.IssueType);
             if (diagnosticDescriptor == null) continue;
+
+            // Skip warnings if null-forgiving operator is present
+            if (suppressWarnings && diagnosticDescriptor.DefaultSeverity == DiagnosticSeverity.Warning)
+                continue;
 
             var diagnostic = Diagnostic.Create(
                 diagnosticDescriptor,

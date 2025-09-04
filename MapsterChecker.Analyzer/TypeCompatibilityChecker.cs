@@ -238,8 +238,11 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
 
         if (type.IsReferenceType)
         {
-            canBeNull = type.NullableAnnotation == NullableAnnotation.Annotated || 
-                       type.NullableAnnotation == NullableAnnotation.None;
+            // Only treat as nullable if explicitly annotated with ?
+            // NullableAnnotation.None means nullable context is disabled, treat as non-nullable
+            // NullableAnnotation.NotAnnotated means explicitly non-nullable
+            // NullableAnnotation.Annotated means explicitly nullable (with ?)
+            canBeNull = type.NullableAnnotation == NullableAnnotation.Annotated;
             isExplicitlyNullable = type.NullableAnnotation == NullableAnnotation.Annotated;
         }
         else if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
