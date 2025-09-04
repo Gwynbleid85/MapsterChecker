@@ -152,6 +152,23 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
 
     private void CheckTypeCompatibility(ITypeSymbol sourceType, ITypeSymbol destinationType, TypeCompatibilityResult result)
     {
+        // Early check for identical types (including identical generic types)
+        // But allow collections with different container types to be evaluated later
+        var sourceTypeString = sourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var destTypeString = destinationType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        
+        if (sourceTypeString == destTypeString)
+        {
+            // Types are identical, no compatibility issues
+            return;
+        }
+        
+        // Also check using symbol equality for identical types not caught by string comparison
+        if (SymbolEqualityComparer.Default.Equals(sourceType, destinationType))
+        {
+            return;
+        }
+        
         // Check for problematic value/reference type mixing
         var sourceUnderlyingType = GetUnderlyingType(sourceType);
         var destUnderlyingType = GetUnderlyingType(destinationType);
@@ -186,7 +203,8 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
         var sourceUnderlyingType = GetUnderlyingType(sourceType);
         var destUnderlyingType = GetUnderlyingType(destinationType);
 
-        if (SymbolEqualityComparer.Default.Equals(sourceUnderlyingType, destUnderlyingType))
+        // Enhanced type equality check that handles generic types properly
+        if (AreTypesEqual(sourceUnderlyingType, destUnderlyingType))
             return true;
 
         // Check for collection type mismatches early
@@ -213,6 +231,47 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
 
         if (AreBothReferenceTypes(sourceUnderlyingType, destUnderlyingType))
             return AreReferenceTypesCompatible(sourceUnderlyingType, destUnderlyingType);
+
+        return false;
+    }
+
+    /// <summary>
+    /// Enhanced type equality check that handles generic types properly.
+    /// </summary>
+    private bool AreTypesEqual(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    {
+        // Standard equality check first
+        if (SymbolEqualityComparer.Default.Equals(sourceType, destinationType))
+            return true;
+
+        // Compare the full type strings as a fallback for generic types
+        var sourceTypeString = sourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var destTypeString = destinationType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        
+        if (sourceTypeString == destTypeString)
+            return true;
+
+        // For generic types, check generic type definition and arguments separately (avoiding recursion)
+        if (sourceType is INamedTypeSymbol sourceNamed && destinationType is INamedTypeSymbol destNamed)
+        {
+            if (sourceNamed.IsGenericType && destNamed.IsGenericType)
+            {
+                // Check if the generic type definitions are the same
+                if (SymbolEqualityComparer.Default.Equals(sourceNamed.ConstructedFrom, destNamed.ConstructedFrom))
+                {
+                    if (sourceNamed.TypeArguments.Length == destNamed.TypeArguments.Length)
+                    {
+                        // Compare type arguments using symbol equality only (no recursion)
+                        for (int i = 0; i < sourceNamed.TypeArguments.Length; i++)
+                        {
+                            if (!SymbolEqualityComparer.Default.Equals(sourceNamed.TypeArguments[i], destNamed.TypeArguments[i]))
+                                return false;
+                        }
+                        return true;
+                    }
+                }
+            }
+        }
 
         return false;
     }
