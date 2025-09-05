@@ -90,8 +90,13 @@ public class Program
 {
     public static void Main()
     {
+        
+        
         // Configure Mapster mappings
         MapsterConfig.Configure();
+
+
+        TestCollections();
         
         var person = new Person
         {
@@ -122,6 +127,8 @@ public class Program
         Console.WriteLine();
         Console.WriteLine("Testing with keyword mappings (should not trigger warnings):");
         TestWithKeyword();
+        
+        
     }
     
     private static void TestNullableMappings()
@@ -260,5 +267,22 @@ public class Program
         
         var addressDto = address.Adapt<AddressDto>()!;
 
+    }
+    
+    private static void TestCollections()
+    {
+        var listOfInts = new List<int> {1, 2, 3};
+        var listOfIntsMapped = listOfInts.Adapt<List<int>>();
+        
+        var hashSetOfInts = new HashSet<int> {1, 2, 3};
+        var hashSetOfIntsMapped = hashSetOfInts.Adapt<HashSet<int>>();
+        
+        var dictionaryOfIntToString = new Dictionary<int, string>
+        {
+            {1, "one"},
+            {2, "two"},
+            {3, "three"}
+        };
+        var dictionaryOfIntToStringMapped = dictionaryOfIntToString.Adapt<Dictionary<int, string>>();
     }
 }

@@ -152,6 +152,23 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
 
     private void CheckTypeCompatibility(ITypeSymbol sourceType, ITypeSymbol destinationType, TypeCompatibilityResult result)
     {
+        // Early check for identical types (including identical generic types)
+        // But allow collections with different container types to be evaluated later
+        var sourceTypeString = sourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var destTypeString = destinationType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        
+        if (sourceTypeString == destTypeString)
+        {
+            // Types are identical, no compatibility issues
+            return;
+        }
+        
+        // Also check using symbol equality for identical types not caught by string comparison
+        if (SymbolEqualityComparer.Default.Equals(sourceType, destinationType))
+        {
+            return;
+        }
+        
         // Check for problematic value/reference type mixing
         var sourceUnderlyingType = GetUnderlyingType(sourceType);
         var destUnderlyingType = GetUnderlyingType(destinationType);
@@ -186,15 +203,21 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
         var sourceUnderlyingType = GetUnderlyingType(sourceType);
         var destUnderlyingType = GetUnderlyingType(destinationType);
 
-        if (SymbolEqualityComparer.Default.Equals(sourceUnderlyingType, destUnderlyingType))
+        // Enhanced type equality check that handles generic types properly
+        if (AreTypesEqual(sourceUnderlyingType, destUnderlyingType))
             return true;
 
-        // Check for collection type mismatches early
+        // Check for collection type compatibility
         var sourceIsCollection = IsCollectionType(sourceUnderlyingType);
         var destIsCollection = IsCollectionType(destUnderlyingType);
         
+        // If both are collections, check if they're compatible collection types
+        if (sourceIsCollection && destIsCollection)
+        {
+            return AreCollectionsCompatible(sourceUnderlyingType, destUnderlyingType);
+        }
+        
         // If one is a collection and the other is not, they're incompatible
-        // Exception: Allow compatible collection-to-collection mappings
         if (sourceIsCollection != destIsCollection)
         {
             // Special case: string is technically IEnumerable<char> but we treat it as non-collection
@@ -213,6 +236,47 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
 
         if (AreBothReferenceTypes(sourceUnderlyingType, destUnderlyingType))
             return AreReferenceTypesCompatible(sourceUnderlyingType, destUnderlyingType);
+
+        return false;
+    }
+
+    /// <summary>
+    /// Enhanced type equality check that handles generic types properly.
+    /// </summary>
+    private bool AreTypesEqual(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    {
+        // Standard equality check first
+        if (SymbolEqualityComparer.Default.Equals(sourceType, destinationType))
+            return true;
+
+        // Compare the full type strings as a fallback for generic types
+        var sourceTypeString = sourceType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var destTypeString = destinationType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        
+        if (sourceTypeString == destTypeString)
+            return true;
+
+        // For generic types, check generic type definition and arguments separately (avoiding recursion)
+        if (sourceType is INamedTypeSymbol sourceNamed && destinationType is INamedTypeSymbol destNamed)
+        {
+            if (sourceNamed.IsGenericType && destNamed.IsGenericType)
+            {
+                // Check if the generic type definitions are the same
+                if (SymbolEqualityComparer.Default.Equals(sourceNamed.ConstructedFrom, destNamed.ConstructedFrom))
+                {
+                    if (sourceNamed.TypeArguments.Length == destNamed.TypeArguments.Length)
+                    {
+                        // Compare type arguments using symbol equality only (no recursion)
+                        for (int i = 0; i < sourceNamed.TypeArguments.Length; i++)
+                        {
+                            if (!SymbolEqualityComparer.Default.Equals(sourceNamed.TypeArguments[i], destNamed.TypeArguments[i]))
+                                return false;
+                        }
+                        return true;
+                    }
+                }
+            }
+        }
 
         return false;
     }
@@ -238,10 +302,9 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
 
         if (type.IsReferenceType)
         {
-            // Only treat as nullable if explicitly annotated with ?
-            // NullableAnnotation.None means nullable context is disabled, treat as non-nullable
-            // NullableAnnotation.NotAnnotated means explicitly non-nullable
+            // Check for nullable reference types
             // NullableAnnotation.Annotated means explicitly nullable (with ?)
+            // In nullable-enabled context, only Annotated types are nullable
             canBeNull = type.NullableAnnotation == NullableAnnotation.Annotated;
             isExplicitlyNullable = type.NullableAnnotation == NullableAnnotation.Annotated;
         }
@@ -568,17 +631,25 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
     /// </summary>
     private bool AreCollectionsCompatible(ITypeSymbol sourceType, ITypeSymbol destinationType)
     {
-        // For now, allow mapping between different collection types if they have the same element type
-        // This is a simplified check - Mapster can handle List<T> to IEnumerable<T> etc.
+        // Allow mapping between different collection types if they have compatible element types
+        // This is a simplified check - Mapster can handle List<T> to HashSet<T>, etc.
         
         var sourceElementType = GetCollectionElementType(sourceType);
         var destElementType = GetCollectionElementType(destinationType);
         
         if (sourceElementType == null || destElementType == null)
             return false;
-            
-        // Check if element types are compatible
-        return AreTypesCompatible(sourceElementType, destElementType);
+        
+        // Use enhanced type equality to check element types (avoiding recursion)
+        var elementsEqual = AreTypesEqual(sourceElementType, destElementType);
+        
+        // Also check symbol equality as fallback
+        if (!elementsEqual)
+        {
+            elementsEqual = SymbolEqualityComparer.Default.Equals(sourceElementType, destElementType);
+        }
+        
+        return elementsEqual;
     }
 
     /// <summary>
