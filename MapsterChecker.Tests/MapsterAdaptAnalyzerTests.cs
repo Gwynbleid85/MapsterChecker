@@ -995,6 +995,133 @@ public class TestClass
         await VerifyAnalyzerAsync(testCode);
     }
 
+    [Fact]
+    public async Task HashSet_WithCompatibleRecordTypes_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+using System.Collections.Generic;
+
+public record RecordA(int Id, string Name);
+public record RecordB(string Id, string Name);
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var recordA = new RecordA(1, ""Test"");
+        var hashSetA = new HashSet<RecordA> {recordA};
+        
+        // Should not report error - RecordA can map to RecordB
+        var hashSetB = hashSetA.Adapt<HashSet<RecordB>>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task List_WithCompatibleRecordTypes_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+using System.Collections.Generic;
+
+public record PersonRecord(int Id, string Name);
+public record PersonDto(string Id, string Name);
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var personRecord = new PersonRecord(42, ""Alice"");
+        var listRecords = new List<PersonRecord> {personRecord};
+        
+        // Should not report error - PersonRecord can map to PersonDto
+        var listDtos = listRecords.Adapt<List<PersonDto>>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task Collections_WithIncompatibleComplexTypes_ShouldReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+using System.Collections.Generic;
+
+public class TypeA
+{
+    public string PropertyX { get; set; } = ""X"";
+}
+
+public class TypeB
+{
+    public int PropertyY { get; set; } = 1;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var listA = new List<TypeA> {new TypeA()};
+        
+        // Should report error - TypeA and TypeB have no common properties
+        var listB = {|MAPSTER002:listA.Adapt<List<TypeB>>()|}; 
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task Collections_WithNullableToNonNullableRecords_ShouldReportWarning()
+    {
+        const string testCode = @"
+#nullable enable
+using Mapster;
+using System.Collections.Generic;
+
+public record SourceRecord(string? Name, int Age);
+public record DestRecord(string Name, int Age);
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var sourceList = new List<SourceRecord> {new(""Alice"", 25)};
+        
+        // Should report property-level nullability warning
+        var destList = {|MAPSTER001P:sourceList.Adapt<List<DestRecord>>()|}; 
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task Collections_WithValueToReferenceTypeElements_ShouldReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+using System.Collections.Generic;
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var intList = new List<int> {1, 2, 3};
+        
+        // Should report error - int to string mapping is not supported by default
+        var stringList = {|MAPSTER002:intList.Adapt<List<string>>()|}; 
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
     #endregion
 
     private static async Task VerifyAnalyzerAsync(string source, params DiagnosticResult[] expected)
@@ -1016,4 +1143,5 @@ public class TestClass
 
         await test.RunAsync();
     }
+
 }

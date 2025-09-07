@@ -6,131 +6,9 @@ using Mapster;
 
 namespace SampleApp;
 
-
-public record RecordA(int Id, string Name);
-public record RecordB(int Id, string Name);
-
-public record RecordC(string Id, string Name);
-public record RecordD(string Id, string[] Name, int Age);
-public record RecordE(string Id, string Name, int Age);
-
-public partial class PartialClassA
+public class MappingTests
 {
-    public int Id { get; set; }
-    public string Name { get; set; }
-}
-
-public class AfterMappingObjectA
-{
-    public int Id { get; set; }
-    public required string[] Data { get; set; }
-    
-    public string ExtraProperty { get; set; } = "Extra";
-}
-
-public class AfterMappingObjectB
-{
-    public int Id { get; set; }
-    public required string Data { get; set; }
-    
-    public string ExtraProperty { get; set; } = "Extra";
-}
-
-public class Address
-{
-    public string Street { get; set; }
-    public int City { get; set; }
-    public string State { get; set; }
-    public string ZipCode { get; set; }
-}
-
-public class Person
-{
-    public Guid Id { get; set; }
-    public string? Name { get; set; }
-    public int Age { get; set; }
-    public DateTime? BirthDate { get; set; }
-    
-    public Address Address { get; set; }
-    
-}
-
-public class AddressDto
-{
-    public required string Street { get; set; }
-    public required int City { get; set; }
-    public required string State { get; set; }
-    public required string ZipCode { get; set; }
-}
-
-public class PersonDto
-{
-    public string Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public int Age { get; set; }
-    public DateTime? BirthDate { get; set; }
-    
-    public AddressDto Address { get; set; }
-}
-
-// Test classes for "no common properties" bug fix
-public class TypeWithNoCommonProps
-{
-    public string PropertyA { get; set; } = "A";
-    public int PropertyB { get; set; } = 1;
-}
-
-public class AnotherTypeWithNoCommonProps
-{
-    public string PropertyX { get; set; } = "X";
-    public int PropertyY { get; set; } = 2;
-}
-
-public class Program
-{
-    public static void Main()
-    {
-        
-        
-        // Configure Mapster mappings
-        MapsterConfig.Configure();
-
-
-        TestCollections();
-        
-        var person = new Person
-        {
-            Id = Guid.NewGuid(),
-            Name = "John Doe",
-            Age = 30,
-            BirthDate = DateTime.Now.AddYears(-30)
-        };
-
-        Console.WriteLine("=== MapsterChecker Sample Application ===");
-        Console.WriteLine();
-
-        Console.WriteLine("Testing valid mappings (should not trigger warnings):");
-        TestValidMappings(person);
-
-        Console.WriteLine();
-        Console.WriteLine("Testing problematic mappings (should trigger MAPSTER001 warnings):");
-        TestProblematicMappings(person);
-
-        Console.WriteLine();
-        Console.WriteLine("Testing incompatible mappings (should trigger MAPSTER002 errors):");
-        TestIncompatibleMappings();
-        
-        Console.WriteLine();
-        Console.WriteLine("Testing CleanResult mappings (should trigger MAPSTER002 errors):");
-        TestAfterMapping();
-        
-        Console.WriteLine();
-        Console.WriteLine("Testing with keyword mappings (should not trigger warnings):");
-        TestWithKeyword();
-        
-        
-    }
-    
+   
     private static void TestNullableMappings()
     {
         string? nullableString = null;
@@ -284,5 +162,34 @@ public class Program
             {3, "three"}
         };
         var dictionaryOfIntToStringMapped = dictionaryOfIntToString.Adapt<Dictionary<int, string>>();
+    }
+
+    private static void TestCollectionsComplexMapping()
+    {
+        var recordA = new RecordA(1, "Test");
+        var hashSetOfRecordA = new HashSet<RecordA> {recordA};
+        hashSetOfRecordA.Adapt<HashSet<RecordB>>();
+        
+        // Should throw error
+        hashSetOfRecordA.Adapt<HashSet<RecordD>>();
+    }
+
+
+    private static void TestComplexMapping()
+    {
+        var compoundA = new CompoundClassA
+        {
+            Id = 1,
+            Name = "Test",
+            Nested = [new RecordA(2, "Nested")]
+            ,
+            PhoneNumbers = [
+                new PhoneNumberA { CountryCode = 1, Number = "1234567890" },
+                new PhoneNumberA { CountryCode = 44, Number = "9876543210" }
+            ]
+            
+        };
+        
+        var compoundB = compoundA.Adapt<CompoundClassB>();
     }
 }

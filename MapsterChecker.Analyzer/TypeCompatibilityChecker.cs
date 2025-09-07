@@ -31,6 +31,12 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
         // Check if there's a custom mapping configuration that overrides default checks
         var hasCustomMapping = configurationRegistry?.HasCustomMapping(sourceType, destinationType) ?? false;
 
+        // Check if these are compatible collections
+        var sourceIsCollection = IsCollectionType(sourceType);
+        var destIsCollection = IsCollectionType(destinationType);
+        var areCompatibleCollections = sourceIsCollection && destIsCollection && 
+            AreCollectionsCompatible(sourceType, destinationType);
+
         if (!hasCustomMapping)
         {
             CheckNullabilityCompatibility(sourceType, destinationType, result);
@@ -47,7 +53,9 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
         // Check if there's an AfterMapping configuration that can handle property incompatibilities
         var hasAfterMapping = configurationRegistry?.HasMappingOfType(sourceType, destinationType, CustomMappingType.AfterMapping) ?? false;
         
-        if (ShouldPerformPropertyAnalysis(sourceType, destinationType, hasAfterMapping))
+        // Skip property analysis completely for collection types to avoid double reporting
+        // For collections, type-level analysis is sufficient
+        if (!sourceIsCollection && !destIsCollection && ShouldPerformPropertyAnalysis(sourceType, destinationType, hasAfterMapping))
         {
             var propertyAnalyzer = new PropertyMappingAnalyzer(semanticModel, configurationRegistry);
             var propertyResult = propertyAnalyzer.AnalyzePropertyMapping(sourceType, destinationType, overriddenProperties);
@@ -55,6 +63,107 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
             result.PropertyIssues = propertyResult.Issues;
             result.HasCircularReferences = propertyResult.HasCircularReference;
             result.MaxDepthReached = propertyResult.MaxDepthReached;
+        }
+        
+        // For collections, perform element-level analysis when appropriate
+        if (sourceIsCollection && destIsCollection)
+        {
+            var sourceElementType = GetCollectionElementType(sourceType);
+            var destElementType = GetCollectionElementType(destinationType);
+            
+            if (sourceElementType != null && destElementType != null)
+            {
+                var shouldAnalyzeElements = false;
+                var analyzeOnlyNullability = false;
+                
+                if (areCompatibleCollections)
+                {
+                    // For compatible collections with complex types, analyze for nullability issues
+                    if (IsComplexUserDefinedType(sourceElementType) && IsComplexUserDefinedType(destElementType))
+                    {
+                        shouldAnalyzeElements = true;
+                        analyzeOnlyNullability = true;
+                    }
+                    // For compatible collections with string types, analyze for nullability
+                    else if (IsStringType(sourceElementType) && IsStringType(destElementType))
+                    {
+                        shouldAnalyzeElements = true;
+                        analyzeOnlyNullability = true;
+                    }
+                }
+                else
+                {
+                    // For incompatible collections, only report both levels for specific cases
+                    // String->DateTime and similar reference-to-value conversions get both errors
+                    // Value->reference conversions (like int->string) only get type-level errors
+                    if (IsStringType(sourceElementType) && IsPrimitiveValueType(destElementType))
+                    {
+                        shouldAnalyzeElements = true;
+                        analyzeOnlyNullability = false; // Include all types of issues
+                    }
+                }
+                
+                if (shouldAnalyzeElements)
+                {
+                    // Create a simple property issue directly for primitive element types
+                    if (!IsComplexUserDefinedType(sourceElementType) || !IsComplexUserDefinedType(destElementType))
+                    {
+                        var elementCompatibility = CheckElementCompatibility(sourceElementType, destElementType);
+                        if (elementCompatibility.HasNullabilityIssue && (analyzeOnlyNullability || !elementCompatibility.HasIncompatibilityIssue))
+                        {
+                            result.PropertyIssues = new[]
+                            {
+                                new PropertyCompatibilityIssue
+                                {
+                                    PropertyPath = "this[]",
+                                    SourceType = sourceElementType.ToDisplayString(),
+                                    DestinationType = destElementType.ToDisplayString(),
+                                    IssueType = PropertyIssueType.NullabilityMismatch,
+                                    Description = elementCompatibility.NullabilityIssueDescription,
+                                    Severity = DiagnosticSeverity.Warning
+                                }
+                            }.ToImmutableArray();
+                        }
+                        else if (!analyzeOnlyNullability && elementCompatibility.HasIncompatibilityIssue)
+                        {
+                            result.PropertyIssues = new[]
+                            {
+                                new PropertyCompatibilityIssue
+                                {
+                                    PropertyPath = "this[]",
+                                    SourceType = sourceElementType.ToDisplayString(),
+                                    DestinationType = destElementType.ToDisplayString(),
+                                    IssueType = PropertyIssueType.TypeIncompatibility,
+                                    Description = $"Cannot map from type '{sourceElementType.ToDisplayString()}' to incompatible type '{destElementType.ToDisplayString()}'",
+                                    Severity = DiagnosticSeverity.Error
+                                }
+                            }.ToImmutableArray();
+                        }
+                    }
+                    else
+                    {
+                        // For complex types, use the property analyzer
+                        var propertyAnalyzer = new PropertyMappingAnalyzer(semanticModel, configurationRegistry);
+                        var propertyResult = propertyAnalyzer.AnalyzePropertyMapping(sourceElementType, destElementType, overriddenProperties);
+                        
+                        var issues = analyzeOnlyNullability 
+                            ? propertyResult.Issues.Where(issue => issue.IssueType == PropertyIssueType.NullabilityMismatch)
+                            : propertyResult.Issues;
+                        
+                        result.PropertyIssues = issues
+                            .Select(issue => new PropertyCompatibilityIssue
+                            {
+                                PropertyPath = $"this[].{issue.PropertyPath}",
+                                SourceType = issue.SourceType,
+                                DestinationType = issue.DestinationType,
+                                IssueType = issue.IssueType,
+                                Description = issue.Description,
+                                Severity = issue.Severity
+                            })
+                            .ToImmutableArray();
+                    }
+                }
+            }
         }
 
         return result;
@@ -94,7 +203,7 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
 
     private bool IsComplexUserDefinedType(ITypeSymbol type)
     {
-        return type.TypeKind == TypeKind.Class && 
+        return (type.TypeKind == TypeKind.Class || type.IsRecord) && 
                type.SpecialType == SpecialType.None &&
                !IsSystemType(type);
     }
@@ -123,6 +232,90 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
     }
 
     /// <summary>
+    /// Checks if two types have common properties with compatible types.
+    /// This is stricter than HasCommonProperties as it validates property type compatibility.
+    /// </summary>
+    private bool HasCompatibleCommonProperties(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    {
+        var sourceProperties = GetMappableProperties(sourceType);
+        var destProperties = GetMappableProperties(destinationType);
+        
+        var severeIncompatibilities = 0;
+        var totalCommonProperties = 0;
+        
+        foreach (var destProp in destProperties)
+        {
+            var sourceProp = sourceProperties.FirstOrDefault(src => src.Name == destProp.Name);
+            if (sourceProp != null)
+            {
+                totalCommonProperties++;
+                
+                // Check for severely incompatible cases that Mapster definitely can't handle
+                if (IsSeverelyIncompatiblePropertyTypes(sourceProp.Type, destProp.Type))
+                {
+                    severeIncompatibilities++;
+                }
+            }
+        }
+        
+        // Allow mapping if we have common properties and not too many severe incompatibilities
+        // If more than 70% of properties are severely incompatible, block the mapping entirely
+        if (totalCommonProperties > 0 && severeIncompatibilities >= totalCommonProperties * 0.7)
+            return false;
+            
+        // For small numbers of properties, be more strict
+        if (totalCommonProperties <= 3 && severeIncompatibilities >= totalCommonProperties * 0.6)
+            return false;
+            
+        return totalCommonProperties > 0;
+    }
+
+    /// <summary>
+    /// Checks if two property types are severely incompatible (beyond what Mapster can reasonably handle).
+    /// </summary>
+    private bool IsSeverelyIncompatiblePropertyTypes(ITypeSymbol sourceType, ITypeSymbol destType)
+    {
+        // Arrays/collections to primitives are severely incompatible
+        if ((sourceType.TypeKind == TypeKind.Array || IsCollectionType(sourceType)) && 
+            (destType.IsValueType || IsStringType(destType)))
+            return true;
+            
+        // Primitives to arrays/collections are severely incompatible  
+        if ((sourceType.IsValueType || IsStringType(sourceType)) &&
+            (destType.TypeKind == TypeKind.Array || IsCollectionType(destType)))
+            return true;
+            
+        // Complex types with no common properties are severely incompatible
+        if (IsComplexUserDefinedType(sourceType) && IsComplexUserDefinedType(destType) &&
+            !HasCommonProperties(sourceType, destType))
+            return true;
+            
+        // More specific incompatibility checks for property types
+        // String to non-string value types (except compatible ones)
+        if (IsStringType(sourceType) && destType.IsValueType && 
+            !IsPrimitiveValueType(destType) && !IsStringType(destType))
+            return true;
+            
+        // Non-string value types to string (when not obviously convertible)
+        if (sourceType.IsValueType && IsStringType(destType) && 
+            destType.SpecialType != SpecialType.System_String)
+            return false; // Actually, value types to string is usually OK via ToString()
+            
+        // Incompatible primitives (like string to int)
+        if ((IsStringType(sourceType) && destType.IsValueType && !IsStringType(destType)) ||
+            (sourceType.IsValueType && IsStringType(destType) && !IsStringType(sourceType)))
+        {
+            // Check if it's a really problematic conversion
+            if (IsStringType(sourceType) && (destType.SpecialType == SpecialType.System_Int32 ||
+                destType.SpecialType == SpecialType.System_Boolean ||
+                destType.SpecialType == SpecialType.System_Double))
+                return true;
+        }
+            
+        return false;
+    }
+
+    /// <summary>
     /// Gets all public properties that can be mapped by Mapster.
     /// </summary>
     /// <param name="type">The type to analyze</param>
@@ -135,7 +328,16 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
                 prop.DeclaredAccessibility == Accessibility.Public &&
                 !prop.IsStatic &&
                 prop.GetMethod != null &&
-                prop.SetMethod != null);
+                (prop.SetMethod != null || IsInitOnlyProperty(prop)));
+    }
+
+    /// <summary>
+    /// Checks if a property is init-only (used by records and init-only properties).
+    /// </summary>
+    private bool IsInitOnlyProperty(IPropertySymbol property)
+    {
+        // Check if the setter is init-only
+        return property.SetMethod?.IsInitOnly == true;
     }
 
     private void CheckNullabilityCompatibility(ITypeSymbol sourceType, ITypeSymbol destinationType, TypeCompatibilityResult result)
@@ -181,6 +383,16 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
             return;
         }
 
+
+        // Special check for collections with potentially mappable element types
+        var sourceIsCollection = IsCollectionType(sourceType);
+        var destIsCollection = IsCollectionType(destinationType);
+        
+        if (sourceIsCollection && destIsCollection)
+        {
+            if (AreCollectionsCompatible(sourceType, destinationType))
+                return; // Collections are compatible, no need to report errors
+        }
 
         // Check for complex types with no common properties first, before general compatibility check
         if (IsComplexUserDefinedType(sourceType) && IsComplexUserDefinedType(destinationType) && 
@@ -631,25 +843,184 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
     /// </summary>
     private bool AreCollectionsCompatible(ITypeSymbol sourceType, ITypeSymbol destinationType)
     {
-        // Allow mapping between different collection types if they have compatible element types
-        // This is a simplified check - Mapster can handle List<T> to HashSet<T>, etc.
+        var sourceCollectionType = GetCollectionTypeName(sourceType);
+        var destCollectionType = GetCollectionTypeName(destinationType);
         
-        var sourceElementType = GetCollectionElementType(sourceType);
-        var destElementType = GetCollectionElementType(destinationType);
-        
-        if (sourceElementType == null || destElementType == null)
-            return false;
-        
-        // Use enhanced type equality to check element types (avoiding recursion)
-        var elementsEqual = AreTypesEqual(sourceElementType, destElementType);
-        
-        // Also check symbol equality as fallback
-        if (!elementsEqual)
+        // Define compatible collection mappings
+        var compatibleMappings = new Dictionary<string, HashSet<string>>
         {
-            elementsEqual = SymbolEqualityComparer.Default.Equals(sourceElementType, destElementType);
+            ["Array"] = new HashSet<string> { "Array", "List", "IEnumerable", "ICollection", "IList" },
+            ["List"] = new HashSet<string> { "List", "Array", "IEnumerable", "ICollection", "IList" },
+            ["IEnumerable"] = new HashSet<string> { "IEnumerable", "Array", "List", "ICollection", "IList", "HashSet", "ISet" },
+            ["ICollection"] = new HashSet<string> { "ICollection", "Array", "List", "IEnumerable", "IList", "HashSet", "ISet" },
+            ["IList"] = new HashSet<string> { "IList", "Array", "List", "IEnumerable", "ICollection" },
+            ["HashSet"] = new HashSet<string> { "HashSet", "IEnumerable", "ICollection", "ISet" },
+            ["ISet"] = new HashSet<string> { "ISet", "HashSet", "IEnumerable", "ICollection" }
+        };
+        
+        // Check if the mapping is allowed
+        if (compatibleMappings.ContainsKey(sourceCollectionType) && 
+            compatibleMappings[sourceCollectionType].Contains(destCollectionType))
+        {
+            var sourceElementType = GetCollectionElementType(sourceType);
+            var destElementType = GetCollectionElementType(destinationType);
+            
+            if (sourceElementType == null || destElementType == null)
+                return false;
+            
+            // Check element type compatibility (avoiding infinite recursion)
+            return AreElementTypesCompatible(sourceElementType, destElementType);
         }
         
-        return elementsEqual;
+        // Specific cross-collection mappings that require custom configuration
+        var restrictedMappings = new[] 
+        { 
+            (Source: "HashSet", Dest: "List"),
+            (Source: "List", Dest: "HashSet")
+        };
+        
+        foreach (var (Source, Dest) in restrictedMappings)
+        {
+            if (sourceCollectionType == Source && destCollectionType == Dest)
+                return false; // Requires custom configuration
+        }
+        
+        return false; // Not compatible by default
+    }
+
+    /// <summary>
+    /// Gets the collection type name for compatibility checking.
+    /// </summary>
+    private string GetCollectionTypeName(ITypeSymbol type)
+    {
+        if (type is IArrayTypeSymbol)
+            return "Array";
+            
+        if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
+        {
+            var typeName = namedType.Name;
+            return typeName switch
+            {
+                "List" => "List",
+                "HashSet" => "HashSet",
+                "IEnumerable" => "IEnumerable", 
+                "ICollection" => "ICollection",
+                "IList" => "IList",
+                "ISet" => "ISet",
+                _ => typeName
+            };
+        }
+        
+        return type.Name;
+    }
+
+    /// <summary>
+    /// Checks if a type is a primitive value type that can be converted to string.
+    /// </summary>
+    private bool IsPrimitiveValueType(ITypeSymbol type)
+    {
+        var typeName = type.ToDisplayString();
+        var primitiveTypes = new[]
+        {
+            "byte", "sbyte", "short", "ushort", "int", "uint", "long", "ulong",
+            "float", "double", "decimal", "bool", "char", "System.DateTime", "System.TimeSpan", "System.Guid"
+        };
+        
+        return primitiveTypes.Contains(typeName) || type.TypeKind == TypeKind.Enum;
+    }
+
+    /// <summary>
+    /// Checks if element types are compatible for collection mapping.
+    /// Uses a simplified compatibility check to avoid infinite recursion.
+    /// </summary>
+    private bool AreElementTypesCompatible(ITypeSymbol sourceElementType, ITypeSymbol destElementType)
+    {
+        // First check if they're exactly the same type
+        if (AreTypesEqual(sourceElementType, destElementType))
+            return true;
+
+        // Direct value type to reference type collections are not compatible at collection level
+        // This includes List<int> -> List<string> which should be MAPSTER002, not property-level
+        if (sourceElementType.IsValueType && destElementType.IsReferenceType)
+            return false;
+        
+        // Reference type to value type generally not compatible
+        if (sourceElementType.IsReferenceType && destElementType.IsValueType)
+            return false;
+
+        // Check if both are value types and compatible
+        if (sourceElementType.IsValueType && destElementType.IsValueType)
+        {
+            return AreValueTypesCompatible(sourceElementType, destElementType);
+        }
+
+        // For reference types, check compatibility more carefully
+        if (sourceElementType.IsReferenceType && destElementType.IsReferenceType)
+        {
+            // String types (including nullable variants) are compatible for element type analysis
+            // Nullability issues will be caught by property-level analysis
+            if (IsStringType(sourceElementType) && IsStringType(destElementType))
+                return true;
+            
+            // If one is string and other is not, generally incompatible
+            if (IsStringType(sourceElementType) || IsStringType(destElementType))
+                return false;
+            
+            // For complex user-defined types, they must have compatible common properties
+            if (IsComplexUserDefinedType(sourceElementType) && IsComplexUserDefinedType(destElementType))
+            {
+                return HasCompatibleCommonProperties(sourceElementType, destElementType);
+            }
+            
+            // For other reference types, allow mapping
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Performs a simple compatibility check for collection element types.
+    /// </summary>
+    private TypeCompatibilityResult CheckElementCompatibility(ITypeSymbol sourceType, ITypeSymbol destType)
+    {
+        var result = new TypeCompatibilityResult();
+        CheckNullabilityCompatibility(sourceType, destType, result);
+        CheckTypeCompatibility(sourceType, destType, result);
+        return result;
+    }
+
+    /// <summary>
+    /// Simplified reference type compatibility check for collection elements.
+    /// </summary>
+    private bool AreReferenceElementTypesCompatible(ITypeSymbol sourceType, ITypeSymbol destType)
+    {
+        // Check inheritance relationship
+        if (AreInheritanceCompatible(sourceType, destType))
+            return true;
+
+        // For complex user-defined types (classes, records), check if they have common properties
+        // This allows mapping between types that have some overlapping structure
+        if (IsComplexUserDefinedType(sourceType) && IsComplexUserDefinedType(destType))
+        {
+            // If they have no common properties, they're incompatible
+            if (!HasCommonProperties(sourceType, destType))
+                return false;
+                
+            // If they have common properties, allow the mapping
+            // Individual property compatibility issues will be caught by property-level analysis
+            return true;
+        }
+
+        // For string and other simple reference types, require exact match
+        if (IsStringType(sourceType) || IsStringType(destType))
+        {
+            return AreTypesEqual(sourceType, destType);
+        }
+
+        // Default to allowing the mapping for other reference types
+        // Let property-level analysis catch specific issues
+        return true;
     }
 
     /// <summary>
