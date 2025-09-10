@@ -217,18 +217,17 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
     }
 
     /// <summary>
-    /// Checks if two types have any common properties that can be mapped.
+    /// Checks if two types have any common members (properties or fields) that can be mapped.
     /// </summary>
     /// <param name="sourceType">The source type</param>
     /// <param name="destinationType">The destination type</param>
-    /// <returns>True if the types have at least one common property</returns>
+    /// <returns>True if the types have at least one common member</returns>
     private bool HasCommonProperties(ITypeSymbol sourceType, ITypeSymbol destinationType)
     {
-        var sourceProperties = GetMappableProperties(sourceType);
-        var destProperties = GetMappableProperties(destinationType);
+        var sourceMemberNames = new HashSet<string>(GetMappableMemberNames(sourceType));
+        var destMemberNames = GetMappableMemberNames(destinationType);
         
-        return destProperties.Any(dest => 
-            sourceProperties.Any(src => src.Name == dest.Name));
+        return destMemberNames.Any(destName => sourceMemberNames.Contains(destName));
     }
 
     /// <summary>
@@ -329,6 +328,34 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
                 !prop.IsStatic &&
                 prop.GetMethod != null &&
                 (prop.SetMethod != null || IsInitOnlyProperty(prop)));
+    }
+    
+    /// <summary>
+    /// Gets all public fields that can be mapped by Mapster.
+    /// </summary>
+    /// <param name="type">The type to analyze</param>
+    /// <returns>Collection of mappable fields</returns>
+    private IEnumerable<IFieldSymbol> GetMappableFields(ITypeSymbol type)
+    {
+        return type.GetMembers()
+            .OfType<IFieldSymbol>()
+            .Where(field => 
+                field.DeclaredAccessibility == Accessibility.Public &&
+                !field.IsStatic &&
+                !field.IsReadOnly &&
+                !field.IsConst);
+    }
+    
+    /// <summary>
+    /// Gets all public members (properties and fields) that can be mapped by Mapster.
+    /// </summary>
+    /// <param name="type">The type to analyze</param>
+    /// <returns>Collection of member names</returns>
+    private IEnumerable<string> GetMappableMemberNames(ITypeSymbol type)
+    {
+        var propertyNames = GetMappableProperties(type).Select(p => p.Name);
+        var fieldNames = GetMappableFields(type).Select(f => f.Name);
+        return propertyNames.Concat(fieldNames).Distinct();
     }
 
     /// <summary>

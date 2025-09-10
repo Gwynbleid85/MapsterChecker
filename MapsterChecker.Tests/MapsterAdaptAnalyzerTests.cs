@@ -512,6 +512,58 @@ public class TestClass
         await VerifyAnalyzerAsync(testCode);
     }
 
+    [Fact]
+    public async Task RecordToClassWithFields_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record RecordWithProperties(string Name, string Description);
+
+public class ClassWithFields
+{
+    public string Name;
+    public string Description;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var record = new RecordWithProperties(""Test"", ""Description"");
+        var classInstance = record.Adapt<ClassWithFields>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task ClassWithFieldsToRecord_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class ClassWithFields
+{
+    public string Name;
+    public string Description;
+}
+
+public record RecordWithProperties(string Name, string Description);
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var classInstance = new ClassWithFields { Name = ""Test"", Description = ""Description"" };
+        var record = classInstance.Adapt<RecordWithProperties>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
     #region Null-Forgiving Operator Tests
 
     [Fact]
@@ -1116,6 +1168,370 @@ public class TestClass
         
         // Should report error - int to string mapping is not supported by default
         var stringList = {|MAPSTER002:intList.Adapt<List<string>>()|}; 
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    #endregion
+
+    #region Field Mapping Support Tests
+
+    [Fact]
+    public async Task FieldToProperty_CompatibleTypes_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceWithFields
+{
+    public string Name;
+    public int Age;
+    public bool IsActive;
+}
+
+public class DestWithProperties
+{
+    public string Name { get; set; } = string.Empty;
+    public int Age { get; set; }
+    public bool IsActive { get; set; }
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceWithFields { Name = ""Test"", Age = 25, IsActive = true };
+        var dest = source.Adapt<DestWithProperties>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task PropertyToField_CompatibleTypes_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceWithProperties
+{
+    public string Name { get; set; } = string.Empty;
+    public int Age { get; set; }
+    public bool IsActive { get; set; }
+}
+
+public class DestWithFields
+{
+    public string Name;
+    public int Age;
+    public bool IsActive;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceWithProperties { Name = ""Test"", Age = 25, IsActive = true };
+        var dest = source.Adapt<DestWithFields>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task MixedFieldsAndProperties_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceMixed
+{
+    public string Name;  // Field
+    public int Age { get; set; }  // Property
+    public bool IsActive;  // Field
+}
+
+public class DestMixed
+{
+    public string Name { get; set; } = string.Empty;  // Property
+    public int Age;  // Field
+    public bool IsActive { get; set; }  // Property
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceMixed { Name = ""Test"", Age = 25, IsActive = true };
+        var dest = source.Adapt<DestMixed>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_CompatibleTypes_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record PersonRecord(string Name, int Age, string Email);
+
+public class PersonClass
+{
+    public string Name;
+    public int Age;
+    public string Email;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var record = new PersonRecord(""John"", 30, ""john@email.com"");
+        var classObj = record.Adapt<PersonClass>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task ClassWithFieldsToRecord_CompatibleTypes_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class PersonClass
+{
+    public string Name;
+    public int Age;
+    public string Email;
+}
+
+public record PersonRecord(string Name, int Age, string Email);
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var classObj = new PersonClass { Name = ""John"", Age = 30, Email = ""john@email.com"" };
+        var record = classObj.Adapt<PersonRecord>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task FieldMapping_WithNullabilityMismatch_ShouldReportWarning()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceWithNullableField
+{
+    public string? Name;
+    public int Age;
+}
+
+public class DestWithNonNullableField
+{
+    public string Name;
+    public int Age;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceWithNullableField { Name = null, Age = 25 };
+        var dest = {|MAPSTER001P:source.Adapt<DestWithNonNullableField>()|};
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task FieldMapping_IncompatibleTypes_ShouldReportError()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceWithIncompatibleField
+{
+    public string Name;
+    public int Age;
+}
+
+public class DestWithIncompatibleField
+{
+    public string Name;
+    public System.DateTime Age;  // int to DateTime is incompatible
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceWithIncompatibleField { Name = ""Test"", Age = 25 };
+        var dest = {|MAPSTER002P:source.Adapt<DestWithIncompatibleField>()|};
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task FieldMapping_NoCommonMembers_ShouldReportError()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceWithDifferentFields
+{
+    public string FirstName;
+    public string LastName;
+}
+
+public class DestWithDifferentFields
+{
+    public string FullName;
+    public int Age;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceWithDifferentFields { FirstName = ""John"", LastName = ""Doe"" };
+        var dest = {|MAPSTER002:source.Adapt<DestWithDifferentFields>()|};
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task ReadOnlyFields_ShouldBeIgnoredInMapping()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceWithReadOnlyField
+{
+    public string Name;
+    public readonly int ReadOnlyValue = 42;  // Should be ignored
+}
+
+public class DestWithReadOnlyField
+{
+    public string Name;
+    public readonly int ReadOnlyValue = 100;  // Should be ignored
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceWithReadOnlyField { Name = ""Test"" };
+        var dest = source.Adapt<DestWithReadOnlyField>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task StaticFields_ShouldBeIgnoredInMapping()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceWithStaticField
+{
+    public string Name;
+    public static string StaticValue = ""Static"";  // Should be ignored
+}
+
+public class DestWithStaticField
+{
+    public string Name;
+    public static string StaticValue = ""Different"";  // Should be ignored
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceWithStaticField { Name = ""Test"" };
+        var dest = source.Adapt<DestWithStaticField>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task ConstFields_ShouldBeIgnoredInMapping()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceWithConstField
+{
+    public string Name;
+    public const string ConstValue = ""Constant"";  // Should be ignored
+}
+
+public class DestWithConstField
+{
+    public string Name;
+    public const string ConstValue = ""Different"";  // Should be ignored
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceWithConstField { Name = ""Test"" };
+        var dest = source.Adapt<DestWithConstField>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task PrivateFields_ShouldBeIgnoredInMapping()
+    {
+        const string testCode = @"
+using Mapster;
+
+public class SourceWithPrivateField
+{
+    public string Name;
+    private string privateField = ""private"";  // Should be ignored
+}
+
+public class DestWithPrivateField
+{
+    public string Name;
+    private string privateField = ""different"";  // Should be ignored
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var source = new SourceWithPrivateField { Name = ""Test"" };
+        var dest = source.Adapt<DestWithPrivateField>();
     }
 }";
 

@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -107,13 +108,13 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
             };
         }
 
-        var sourceProperties = GetMappableProperties(sourceType);
-        var destinationProperties = GetMappableProperties(destinationType);
+        var sourceMemberNames = GetMappableMemberNames(sourceType).ToList();
+        var destinationMemberNames = GetMappableMemberNames(destinationType).ToList();
         
-        var hasAtleastOneSameProperty = sourceProperties.Any(srcProp => 
-            destinationProperties.Any(destProp => destProp.Name == srcProp.Name));
+        var hasAtleastOneSameMember = destinationMemberNames.Any(destName => 
+            sourceMemberNames.Contains(destName));
         
-        if (!hasAtleastOneSameProperty)
+        if (!hasAtleastOneSameMember)
         {
             // If no properties match, report all source properties as missing destination properties
                 issues.Add(new PropertyCompatibilityIssue
@@ -131,42 +132,48 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
             };
         }
 
-        // Analyze each destination property to find mapping issues
-        foreach (var destProp in destinationProperties)
+        var destinationSymbols = GetMappableSymbols(destinationType);
+        
+        // Analyze each destination member to find mapping issues
+        foreach (var destSymbol in destinationSymbols)
         {
-            // Skip properties that are overridden in a with expression (only at the root level)
-            if (string.IsNullOrEmpty(propertyPath) && overriddenProperties != null && overriddenProperties.Contains(destProp.Name))
+            var destName = destSymbol.Name;
+            var destType = GetSymbolType(destSymbol);
+            
+            // Skip members that are overridden in a with expression (only at the root level)
+            if (string.IsNullOrEmpty(propertyPath) && overriddenProperties != null && overriddenProperties.Contains(destName))
             {
                 continue;
             }
             
-            var sourceProp = FindMatchingProperty(sourceProperties, destProp);
+            var sourceSymbol = GetMappableSymbols(sourceType).FirstOrDefault(s => s.Name == destName);
             
-            // Check for missing source properties
-            if (sourceProp == null)
+            // Check for missing source members
+            if (sourceSymbol == null)
             {
                 issues.Add(new PropertyCompatibilityIssue
                 {
-                    PropertyPath = CombinePropertyPath(propertyPath, destProp.Name),
+                    PropertyPath = CombinePropertyPath(propertyPath, destName),
                     SourceType = "missing",
-                    DestinationType = destProp.Type.ToDisplayString(),
+                    DestinationType = destType.ToDisplayString(),
                     IssueType = PropertyIssueType.MissingSourceProperty,
                     Severity = DiagnosticSeverity.Info
                 });
                 continue;
             }
 
-            var currentPropertyPath = CombinePropertyPath(propertyPath, destProp.Name);
+            var sourceMemberType = GetSymbolType(sourceSymbol);
+            var currentPropertyPath = CombinePropertyPath(propertyPath, destName);
             
             // Check for custom property mapping first (using root types for mapping lookup)
             if (configurationRegistry != null && _rootSourceType != null && _rootDestinationType != null && 
-                configurationRegistry.HasPropertyMapping(_rootSourceType, _rootDestinationType, destProp.Name))
+                configurationRegistry.HasPropertyMapping(_rootSourceType, _rootDestinationType, destName))
             {
                 // Property has custom mapping, validate the custom expression instead and skip default validation
-                var customMapping = configurationRegistry.GetPropertyMapping(_rootSourceType, _rootDestinationType, destProp.Name);
+                var customMapping = configurationRegistry.GetPropertyMapping(_rootSourceType, _rootDestinationType, destName);
                 if (customMapping != null)
                 {
-                    var customValidationResult = ValidateCustomPropertyMapping(customMapping, sourceProp, destProp, currentPropertyPath);
+                    var customValidationResult = ValidateCustomPropertyMapping(customMapping, sourceSymbol, destSymbol, currentPropertyPath);
                     issues.AddRange(customValidationResult);
                 }
                 // Skip the rest of the property analysis - custom mapping handles it
@@ -184,7 +191,7 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
                 // since AfterMapping can handle the conversion
                 
                 // Still check for nullability issues as they can be important
-                var nullabilityIssues = CheckDirectPropertyCompatibility(sourceProp, destProp, currentPropertyPath)
+                var nullabilityIssues = CheckDirectMemberCompatibility(sourceSymbol, destSymbol, currentPropertyPath)
                     .Where(issue => issue.IssueType == PropertyIssueType.NullabilityMismatch)
                     .ToList();
                 issues.AddRange(nullabilityIssues);
@@ -192,16 +199,16 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
             else
             {
                 // Check direct property compatibility (nullable, type compatibility)
-                var directCompatibilityResult = CheckDirectPropertyCompatibility(sourceProp, destProp, currentPropertyPath);
+                var directCompatibilityResult = CheckDirectMemberCompatibility(sourceSymbol, destSymbol, currentPropertyPath);
                 issues.AddRange(directCompatibilityResult);
             }
 
             // Recursively analyze nested complex types
-            if (IsComplexType(sourceProp.Type) && IsComplexType(destProp.Type))
+            if (IsComplexType(sourceMemberType) && IsComplexType(destType))
             {
                 var nestedResult = PerformPropertyAnalysis(
-                    sourceProp.Type, 
-                    destProp.Type, 
+                    sourceType, 
+                    destType, 
                     currentPropertyPath, 
                     currentDepth + 1,
                     overriddenProperties);
@@ -225,6 +232,60 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
     /// <param name="destinationProperty">The destination property to check</param>
     /// <param name="propertyPath">The property path for reporting (e.g., "Address.Street")</param>
     /// <returns>List of compatibility issues found between the properties</returns>
+    /// <summary>
+    /// Checks direct compatibility between two members (properties or fields) for type and nullability issues.
+    /// </summary>
+    /// <param name="sourceSymbol">Source member symbol</param>
+    /// <param name="destSymbol">Destination member symbol</param>
+    /// <param name="propertyPath">Current property path for error reporting</param>
+    /// <returns>List of compatibility issues found</returns>
+    private List<PropertyCompatibilityIssue> CheckDirectMemberCompatibility(ISymbol sourceSymbol, ISymbol destSymbol, string propertyPath)
+    {
+        var sourceType = GetSymbolType(sourceSymbol);
+        var destType = GetSymbolType(destSymbol);
+        
+        // If both are properties, use the existing property compatibility method
+        if (sourceSymbol is IPropertySymbol sourceProp && destSymbol is IPropertySymbol destProp)
+        {
+            return CheckDirectPropertyCompatibility(sourceProp, destProp, propertyPath);
+        }
+        
+        // For field mappings, perform basic compatibility check using TypeCompatibilityChecker
+        var typeChecker = new TypeCompatibilityChecker(semanticModel, configurationRegistry);
+        var compatibilityResult = typeChecker.CheckCompatibility(sourceType, destType);
+        
+        var issues = new List<PropertyCompatibilityIssue>();
+        
+        // Convert TypeCompatibilityResult to PropertyCompatibilityIssue list
+        if (compatibilityResult.HasNullabilityIssue)
+        {
+            issues.Add(new PropertyCompatibilityIssue
+            {
+                PropertyPath = propertyPath,
+                SourceType = sourceType.ToDisplayString(),
+                DestinationType = destType.ToDisplayString(),
+                IssueType = PropertyIssueType.NullabilityMismatch,
+                Severity = DiagnosticSeverity.Warning,
+                Description = compatibilityResult.NullabilityIssueDescription ?? "Nullability mismatch"
+            });
+        }
+        
+        if (compatibilityResult.HasIncompatibilityIssue)
+        {
+            issues.Add(new PropertyCompatibilityIssue
+            {
+                PropertyPath = propertyPath,
+                SourceType = sourceType.ToDisplayString(),
+                DestinationType = destType.ToDisplayString(),
+                IssueType = PropertyIssueType.TypeIncompatibility,
+                Severity = DiagnosticSeverity.Error,
+                Description = compatibilityResult.IncompatibilityIssueDescription ?? "Type incompatibility"
+            });
+        }
+        
+        return issues;
+    }
+
     private List<PropertyCompatibilityIssue> CheckDirectPropertyCompatibility(
         IPropertySymbol sourceProperty, 
         IPropertySymbol destinationProperty,
@@ -277,8 +338,8 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
     /// <returns>List of issues found in the custom mapping</returns>
     private List<PropertyCompatibilityIssue> ValidateCustomPropertyMapping(
         CustomMappingInfo customMapping, 
-        IPropertySymbol sourceProperty, 
-        IPropertySymbol destinationProperty, 
+        ISymbol sourceSymbol, 
+        ISymbol destSymbol, 
         string propertyPath)
     {
         var issues = new List<PropertyCompatibilityIssue>();
@@ -403,6 +464,61 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
                 prop.GetMethod != null &&
                 prop.SetMethod != null)
             .ToImmutableArray();
+    }
+    
+    /// <summary>
+    /// Gets all public fields that can be mapped by Mapster.
+    /// Filters to include only public, non-static, non-readonly, non-const fields.
+    /// </summary>
+    /// <param name="type">The type to analyze for mappable fields</param>
+    /// <returns>Array of fields that can be mapped</returns>
+    private ImmutableArray<IFieldSymbol> GetMappableFields(ITypeSymbol type)
+    {
+        return type.GetMembers()
+            .OfType<IFieldSymbol>()
+            .Where(field => 
+                field.DeclaredAccessibility == Accessibility.Public &&
+                !field.IsStatic &&
+                !field.IsReadOnly &&
+                !field.IsConst)
+            .ToImmutableArray();
+    }
+    
+    /// <summary>
+    /// Gets all member names (properties and fields) that can be mapped by Mapster.
+    /// </summary>
+    /// <param name="type">The type to analyze for mappable member names</param>
+    /// <returns>Collection of member names</returns>
+    private IEnumerable<string> GetMappableMemberNames(ITypeSymbol type)
+    {
+        var propertyNames = GetMappableProperties(type).Select(p => p.Name);
+        var fieldNames = GetMappableFields(type).Select(f => f.Name);
+        return propertyNames.Concat(fieldNames).Distinct();
+    }
+    
+    /// <summary>
+    /// Gets all symbols (properties and fields) that can be mapped by Mapster.
+    /// </summary>
+    /// <param name="type">The type to analyze for mappable symbols</param>
+    /// <returns>Collection of symbols</returns>
+    private IEnumerable<ISymbol> GetMappableSymbols(ITypeSymbol type)
+    {
+        var properties = GetMappableProperties(type).Cast<ISymbol>();
+        var fields = GetMappableFields(type).Cast<ISymbol>();
+        return properties.Concat(fields);
+    }
+    
+    /// <summary>
+    /// Gets the type of a symbol (property or field).
+    /// </summary>
+    private ITypeSymbol GetSymbolType(ISymbol symbol)
+    {
+        return symbol switch
+        {
+            IPropertySymbol prop => prop.Type,
+            IFieldSymbol field => field.Type,
+            _ => throw new ArgumentException($"Unsupported symbol type: {symbol.GetType()}")
+        };
     }
 
     /// <summary>
