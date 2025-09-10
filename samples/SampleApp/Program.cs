@@ -184,12 +184,24 @@ public class MappingTests
             Nested = [new RecordA(2, "Nested")]
             ,
             PhoneNumbers = [
-                new PhoneNumberA { CountryCode = 1, Number = "1234567890" },
-                new PhoneNumberA { CountryCode = 44, Number = "9876543210" }
+                new PhoneNumber { CountryCode = 1, Number = "1234567890" },
+                new PhoneNumber { CountryCode = 44, Number = "9876543210" }
             ]
             
         };
         
         var compoundB = compoundA.Adapt<CompoundClassB>();
+        
+    }
+
+    private static void TypeMapping()
+    {
+        
+        var command = new CreateNewRoleCommand("admin:read", "Admin read role");
+        // Commented out temporarily to test - analyzer incorrectly reports error for field mapping
+        var role = command.Adapt<Role>();
+        
+        // Test if Mapster actually supports field mapping at runtime
+        Console.WriteLine($"Command: Name={command.Name}, Description={command.Description}");
     }
 }
