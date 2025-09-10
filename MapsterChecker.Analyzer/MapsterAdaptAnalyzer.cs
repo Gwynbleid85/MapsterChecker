@@ -338,7 +338,8 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
                 DiagnosticDescriptors.IncompatibleTypeMapping,
                 adaptCallInfo.Location,
                 adaptCallInfo.SourceType.ToDisplayString(),
-                adaptCallInfo.DestinationType.ToDisplayString());
+                adaptCallInfo.DestinationType.ToDisplayString(),
+                compatibilityResult.IncompatibilityIssueDescription ?? "Types are not compatible");
 
             context.ReportDiagnostic(diagnostic);
         }

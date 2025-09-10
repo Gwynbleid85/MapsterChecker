@@ -961,7 +961,7 @@ public class TestClass
         await VerifyAnalyzerAsync(testCode,
             DiagnosticResult.CompilerError("MAPSTER002")
                 .WithSpan(10, 22, 10, 63)
-                .WithArguments("System.Collections.Generic.List<string>", "System.Collections.Generic.List<System.DateTime>"),
+                .WithArguments("System.Collections.Generic.List<string>", "System.Collections.Generic.List<System.DateTime>", "Types 'System.Collections.Generic.List<string>' and 'System.Collections.Generic.List<System.DateTime>' are fundamentally incompatible and cannot be mapped automatically. Consider using custom mapping configuration with .Map() to specify the conversion logic, or verify that the source and destination types are correct."),
             DiagnosticResult.CompilerError("MAPSTER002P")
                 .WithSpan(10, 22, 10, 63)
                 .WithArguments("this[]", "string", "System.DateTime"));

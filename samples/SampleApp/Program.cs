@@ -201,6 +201,8 @@ public class MappingTests
         // Commented out temporarily to test - analyzer incorrectly reports error for field mapping
         var role = command.Adapt<Role>();
         
+        var command2 = role.Adapt<CreateNewRoleCommand>();
+        
         // Test if Mapster actually supports field mapping at runtime
         Console.WriteLine($"Command: Name={command.Name}, Description={command.Description}");
     }

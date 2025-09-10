@@ -406,7 +406,7 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
             (sourceUnderlyingType.IsReferenceType && destUnderlyingType.IsValueType))
         {
             result.HasIncompatibilityIssue = true;
-            result.IncompatibilityIssueDescription = $"Cannot map between value type {sourceType.ToDisplayString()} and reference type {destinationType.ToDisplayString()}";
+            result.IncompatibilityIssueDescription = GenerateValueReferenceTypeMismatchDescription(sourceType, destinationType, sourceUnderlyingType, destUnderlyingType);
             return;
         }
 
@@ -426,7 +426,7 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
             !HasCommonProperties(sourceType, destinationType))
         {
             result.HasIncompatibilityIssue = true;
-            result.IncompatibilityIssueDescription = $"Types {sourceType.ToDisplayString()} and {destinationType.ToDisplayString()} have no common properties";
+            result.IncompatibilityIssueDescription = GenerateNoCommonPropertiesDescription(sourceType, destinationType);
             return;
         }
 
@@ -434,7 +434,7 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
             return;
 
         result.HasIncompatibilityIssue = true;
-        result.IncompatibilityIssueDescription = $"Types {sourceType.ToDisplayString()} and {destinationType.ToDisplayString()} are not compatible";
+        result.IncompatibilityIssueDescription = GenerateGeneralIncompatibilityDescription(sourceType, destinationType);
     }
 
     private bool AreTypesCompatible(ITypeSymbol sourceType, ITypeSymbol destinationType)
@@ -1098,6 +1098,157 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
         /// Gets a value indicating whether this type is explicitly marked as nullable.
         /// </summary>
         public bool IsExplicitlyNullable { get; } = isExplicitlyNullable;
+    }
+
+    /// <summary>
+    /// Generates detailed error description for value/reference type mismatches.
+    /// </summary>
+    private static string GenerateValueReferenceTypeMismatchDescription(ITypeSymbol sourceType, ITypeSymbol destinationType, ITypeSymbol sourceUnderlyingType, ITypeSymbol destUnderlyingType)
+    {
+        var sourceTypeDisplay = sourceType.ToDisplayString();
+        var destTypeDisplay = destinationType.ToDisplayString();
+        
+        // Detect specific common problematic mappings
+        if (sourceUnderlyingType.SpecialType == SpecialType.System_Int32 && destTypeDisplay == "string")
+        {
+            return $"Mapster cannot automatically convert integers to strings. Consider using custom mapping: .Map(dest => dest.PropertyName, src => src.PropertyName.ToString())";
+        }
+        
+        if (sourceUnderlyingType.SpecialType == SpecialType.System_String && IsDateTimeType(destUnderlyingType))
+        {
+            return $"Mapster cannot automatically convert strings to DateTime. Consider using custom mapping with parsing: .Map(dest => dest.PropertyName, src => DateTime.Parse(src.PropertyName))";
+        }
+        
+        if (sourceUnderlyingType.SpecialType == SpecialType.System_String && destUnderlyingType.SpecialType == SpecialType.System_Int32)
+        {
+            return $"Mapster cannot automatically convert strings to integers. Consider using custom mapping with parsing: .Map(dest => dest.PropertyName, src => int.Parse(src.PropertyName))";
+        }
+        
+        if (sourceUnderlyingType.IsValueType && destUnderlyingType.IsReferenceType)
+        {
+            return $"Cannot map from value type '{sourceTypeDisplay}' to reference type '{destTypeDisplay}'. Value types and reference types require explicit conversion or custom mapping configuration.";
+        }
+        
+        return $"Cannot map from reference type '{sourceTypeDisplay}' to value type '{destTypeDisplay}'. Reference types and value types require explicit conversion or custom mapping configuration.";
+    }
+    
+    /// <summary>
+    /// Generates detailed error description when types have no common properties/fields.
+    /// </summary>
+    private string GenerateNoCommonPropertiesDescription(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    {
+        var sourceTypeDisplay = sourceType.ToDisplayString();
+        var destTypeDisplay = destinationType.ToDisplayString();
+        
+        // Get the actual members for detailed analysis
+        var sourceMembers = GetMappableMemberNames(sourceType).ToList();
+        var destMembers = GetMappableMemberNames(destinationType).ToList();
+        
+        var sourceMembersText = sourceMembers.Count > 0 
+            ? string.Join(", ", sourceMembers.Take(5)) + (sourceMembers.Count > 5 ? "..." : "")
+            : "no mappable members";
+            
+        var destMembersText = destMembers.Count > 0 
+            ? string.Join(", ", destMembers.Take(5)) + (destMembers.Count > 5 ? "..." : "")
+            : "no mappable members";
+        
+        return $"Types '{sourceTypeDisplay}' and '{destTypeDisplay}' have no common properties or fields. " +
+               $"Source has: {sourceMembersText}. Destination requires: {destMembersText}. " +
+               $"Consider using custom mapping with .Map() to specify how properties should be mapped.";
+    }
+    
+    /// <summary>
+    /// Generates detailed error description for general type incompatibilities.
+    /// </summary>
+    private static string GenerateGeneralIncompatibilityDescription(ITypeSymbol sourceType, ITypeSymbol destinationType)
+    {
+        var sourceTypeDisplay = sourceType.ToDisplayString();
+        var destTypeDisplay = destinationType.ToDisplayString();
+        
+        // Check for common incompatible type scenarios
+        if (IsNumericType(sourceType) && IsDateTimeType(destinationType))
+        {
+            return $"Cannot map from numeric type '{sourceTypeDisplay}' to DateTime '{destTypeDisplay}'. Consider using custom mapping to convert the numeric value (e.g., Unix timestamp) to DateTime.";
+        }
+        
+        if (IsDateTimeType(sourceType) && IsNumericType(destinationType))
+        {
+            return $"Cannot map from DateTime '{sourceTypeDisplay}' to numeric type '{destTypeDisplay}'. Consider using custom mapping to convert DateTime to numeric representation (e.g., .Ticks or Unix timestamp).";
+        }
+        
+        if (sourceType.TypeKind == TypeKind.Enum && destinationType.TypeKind == TypeKind.Enum)
+        {
+            return $"Cannot map between different enum types '{sourceTypeDisplay}' and '{destTypeDisplay}'. Consider using custom mapping or enum conversion logic.";
+        }
+        
+        if (IsGuidType(sourceType) && !IsGuidType(destinationType) && !IsStringTypeStatic(destinationType))
+        {
+            return $"Cannot map from Guid '{sourceTypeDisplay}' to '{destTypeDisplay}'. Guid can only be mapped to string or another Guid. Consider using custom mapping with .ToString() if needed.";
+        }
+        
+        return $"Types '{sourceTypeDisplay}' and '{destTypeDisplay}' are fundamentally incompatible and cannot be mapped automatically. " +
+               $"Consider using custom mapping configuration with .Map() to specify the conversion logic, or verify that the source and destination types are correct.";
+    }
+    
+    /// <summary>
+    /// Checks if a type is a numeric type (int, double, decimal, etc.).
+    /// </summary>
+    private static bool IsNumericType(ITypeSymbol type)
+    {
+        var underlyingType = GetUnderlyingTypeStatic(type);
+        return underlyingType.SpecialType switch
+        {
+            SpecialType.System_SByte or SpecialType.System_Byte or
+            SpecialType.System_Int16 or SpecialType.System_UInt16 or
+            SpecialType.System_Int32 or SpecialType.System_UInt32 or
+            SpecialType.System_Int64 or SpecialType.System_UInt64 or
+            SpecialType.System_Single or SpecialType.System_Double or
+            SpecialType.System_Decimal => true,
+            _ => false
+        };
+    }
+    
+    /// <summary>
+    /// Checks if a type is DateTime or DateTimeOffset.
+    /// </summary>
+    private static bool IsDateTimeType(ITypeSymbol type)
+    {
+        var underlyingType = GetUnderlyingTypeStatic(type);
+        var typeName = underlyingType.ToDisplayString();
+        return typeName == "System.DateTime" || typeName == "System.DateTimeOffset" || typeName == "System.DateOnly" || typeName == "System.TimeOnly";
+    }
+    
+    /// <summary>
+    /// Checks if a type is Guid.
+    /// </summary>
+    private static bool IsGuidType(ITypeSymbol type)
+    {
+        var underlyingType = GetUnderlyingTypeStatic(type);
+        return underlyingType.ToDisplayString() == "System.Guid";
+    }
+
+    /// <summary>
+    /// Static version of GetUnderlyingType for use in static methods.
+    /// </summary>
+    private static ITypeSymbol GetUnderlyingTypeStatic(ITypeSymbol type)
+    {
+        // Handle Nullable<T> by extracting the underlying type
+        if (type is INamedTypeSymbol namedType &&
+            namedType.IsGenericType &&
+            namedType.ConstructedFrom?.SpecialType == SpecialType.System_Nullable_T)
+        {
+            return namedType.TypeArguments[0];
+        }
+
+        return type;
+    }
+
+    /// <summary>
+    /// Static version of IsStringType for use in static methods.
+    /// </summary>
+    private static bool IsStringTypeStatic(ITypeSymbol type)
+    {
+        return type.SpecialType == SpecialType.System_String;
     }
 }
 

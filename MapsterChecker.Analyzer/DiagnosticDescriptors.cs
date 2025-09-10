@@ -28,7 +28,7 @@ public static class DiagnosticDescriptors
     public static readonly DiagnosticDescriptor IncompatibleTypeMapping = new(
         id: "MAPSTER002",
         title: "Incompatible type mapping",
-        messageFormat: "Cannot map from type '{0}' to incompatible type '{1}'",
+        messageFormat: "Cannot map from type '{0}' to incompatible type '{1}'. {2}",
         category: "MapsterChecker.Compatibility",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
