@@ -10,5 +10,6 @@
     <ProjectReference Include="..\..\MapsterChecker.Analyzer\MapsterChecker.Analyzer.csproj" 
                       OutputItemType="Analyzer" 
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\SampleApp2\SampleApp2.csproj" />
   </ItemGroup>
 </Project>
