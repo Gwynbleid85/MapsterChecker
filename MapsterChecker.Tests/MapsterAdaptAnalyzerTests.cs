@@ -1540,6 +1540,152 @@ public class TestClass
 
     #endregion
 
+    #region Allrisk Scenario - Record to Class with Fields
+
+    [Fact]
+    public async Task RecordToClassWithFields_ExactAllriskScenario_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+// Exact replica of CreateNewRoleCommand from Allrisk
+public record CreateNewRoleCommand(string Name, string Description);
+
+// Exact replica of Role class from Allrisk
+public class Role
+{
+    public string Description;
+    [System.ComponentModel.DataAnnotations.Key]
+    public string Name;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        // This is line 34 in the actual Allrisk code that shows false positive
+        var role = command.Adapt<Role>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordWithPropertiesToClassWithFields_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+// Record with two string properties
+public record UserCommand(string FirstName, string LastName);
+
+// Class with matching public fields
+public class User
+{
+    public string FirstName;
+    public string LastName;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new UserCommand(""John"", ""Doe"");
+        var user = command.Adapt<User>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_WithAttributes_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+using System;
+
+public record CreateCommand(string Id, string Name, DateTime CreatedAt);
+
+public class Entity
+{
+    [System.ComponentModel.DataAnnotations.Key]
+    public string Id;
+    
+    public string Name;
+    
+    public DateTime CreatedAt;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new CreateCommand(""123"", ""Test Entity"", DateTime.Now);
+        var entity = command.Adapt<Entity>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithMixedFieldsAndProperties_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record ProductCommand(string Name, decimal Price, int Quantity);
+
+public class Product
+{
+    public string Name;  // Field
+    public decimal Price { get; set; }  // Property
+    public int Quantity;  // Field
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new ProductCommand(""Widget"", 19.99m, 100);
+        var product = command.Adapt<Product>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithNoMatchingMembers_ShouldReportError()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record InputCommand(string Alpha, string Beta);
+
+public class Output
+{
+    public string Gamma;
+    public string Delta;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new InputCommand(""A"", ""B"");
+        var output = {|MAPSTER002:command.Adapt<Output>()|};
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    #endregion
+
     private static async Task VerifyAnalyzerAsync(string source, params DiagnosticResult[] expected)
     {
         var test = new CSharpAnalyzerTest<MapsterAdaptAnalyzer, DefaultVerifier>
