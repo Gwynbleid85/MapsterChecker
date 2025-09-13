@@ -1686,6 +1686,591 @@ public class TestClass
 
     #endregion
 
+    #region False Positive Detection Tests
+
+    [Fact]
+    public async Task RecordToClassWithFields_InNamespace_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using System;
+using Mapster;
+
+namespace Allrisk.AllriskIdentity.Authorization.Application.Commands
+{
+    /// <summary>
+    /// Command to create a new role
+    /// </summary>
+    /// <param name=""Name"">Name of the role</param>
+    /// <param name=""Description"">Description of the role</param>
+    public record CreateNewRoleCommand(string Name, string Description);
+}
+
+namespace Allrisk.AllriskIdentity.Authorization.Core
+{
+    public class Role
+    {
+        public string Description;
+        [System.ComponentModel.DataAnnotations.Key]
+        public string Name;
+    }
+}
+
+namespace TestNamespace
+{
+    using Allrisk.AllriskIdentity.Authorization.Application.Commands;
+    using Allrisk.AllriskIdentity.Authorization.Core;
+    
+    public class TestClass
+    {
+        public void TestMethod()
+        {
+            var command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+            var role = command.Adapt<Role>();
+        }
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_WithNullableEnabled_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+#nullable enable
+using Mapster;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    public string Description = string.Empty;
+    public string Name = string.Empty;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        var role = command.Adapt<Role>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact] 
+    public async Task RecordToClassWithFields_NonNullableFields_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+#nullable enable
+using Mapster;
+using System.Diagnostics.CodeAnalysis;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    [NotNull]
+    public string Description = default!;
+    
+    [NotNull]
+    public string Name = default!;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        var role = command.Adapt<Role>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_WithMartenAttributes_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+using System;
+
+namespace Marten.Schema
+{
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public class IdentityAttribute : Attribute { }
+}
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    public string Description;
+    
+    [Marten.Schema.Identity]
+    public string Name;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        var role = command.Adapt<Role>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_FullyQualifiedTypes_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record CreateNewRoleCommand(System.String Name, System.String Description);
+
+public class Role
+{
+    public System.String Description;
+    public System.String Name;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        CreateNewRoleCommand command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        Role role = command.Adapt<Role>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_AsyncContext_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+using System.Threading.Tasks;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    public string Description;
+    public string Name;
+}
+
+public class TestClass
+{
+    public async Task<Role> TestMethodAsync()
+    {
+        var command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        var role = command.Adapt<Role>();
+        await Task.Delay(1);
+        return role;
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_StaticMethod_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    public string Description;
+    public string Name;
+}
+
+public class Handler
+{
+    public static Role Handle(CreateNewRoleCommand command)
+    {
+        var role = command.Adapt<Role>();
+        return role;
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_GenericContext_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    public string Description;
+    public string Name;
+}
+
+public class Handler<T> where T : class
+{
+    public Role Handle(CreateNewRoleCommand command)
+    {
+        var role = command.Adapt<Role>();
+        return role;
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_PartialClass_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public partial class Role
+{
+    public string Description;
+}
+
+public partial class Role
+{
+    public string Name;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        var role = command.Adapt<Role>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_InitializedFields_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    public string Description = null!;
+    public string Name = null!;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        var role = command.Adapt<Role>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_ExpressionBodiedMethod_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    public string Description;
+    public string Name;
+}
+
+public class Handler
+{
+    public Role Handle(CreateNewRoleCommand command) => command.Adapt<Role>();
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_LocalFunction_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    public string Description;
+    public string Name;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        Role MapCommand(CreateNewRoleCommand command)
+        {
+            return command.Adapt<Role>();
+        }
+
+        var cmd = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        var role = MapCommand(cmd);
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_LambdaExpression_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+using System;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    public string Description;
+    public string Name;
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        Func<CreateNewRoleCommand, Role> mapper = cmd => cmd.Adapt<Role>();
+        var command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        var role = mapper(command);
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_ChainedAdapt_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+
+public record CreateNewRoleCommand(string Name, string Description);
+
+public class Role
+{
+    public string Description;
+    public string Name;
+}
+
+public record RoleDto(string Name, string Description);
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var command = new CreateNewRoleCommand(""admin:read"", ""Admin read role"");
+        var role = command.Adapt<Role>();
+        var dto = role.Adapt<RoleDto>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_Net90_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using Mapster;
+// This test simulates .NET 9.0 environment similar to Allrisk project
+
+namespace Allrisk.AllriskIdentity.Authorization.Application.Commands
+{
+    /// <summary>
+    /// Command to create a new role
+    /// </summary>
+    /// <param name=""Name"">Name of the role. Can contain only lowercase and ':' colons.</param>  
+    /// <param name=""Description"">Description of the role.</param>
+    public record CreateNewRoleCommand(string Name, string Description);
+}
+
+namespace Allrisk.AllriskIdentity.Authorization.Core
+{
+    public class Role
+    {
+        public string Description;
+
+        [System.ComponentModel.DataAnnotations.Key]  // Using [Identity] might be missing, use DataAnnotations instead
+        public string Name;
+    }
+}
+
+namespace TestNamespace
+{
+    using Allrisk.AllriskIdentity.Authorization.Application.Commands;
+    using Allrisk.AllriskIdentity.Authorization.Core;
+    
+    public class TestHandler
+    {
+        public void Handle(CreateNewRoleCommand command)
+        {
+            var role = command.Adapt<Role>(); // This exact line should not produce false positive
+        }
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact] 
+    public async Task RecordToClassWithFields_ComplexScenario_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+using System.Net;
+using Mapster;
+using System.Threading.Tasks;
+
+namespace Allrisk.AllriskIdentity.Authorization.Application.Commands
+{
+    public record CreateNewRoleCommand(string Name, string Description);
+}
+
+namespace Allrisk.AllriskIdentity.Authorization.Core
+{
+    using Allrisk.AllriskIdentity.Authorization.Application.Commands;
+    
+    public class Role
+    {
+        public string Description;
+        [System.ComponentModel.DataAnnotations.Key]
+        public string Name;
+    }
+
+    public class CreateNewRoleCommandHandler
+    {
+        public static async Task<bool> LoadAsync(CreateNewRoleCommand command)
+        {
+            // This mimics the exact Allrisk handler structure
+            await Task.Delay(1);
+            return true;
+        }
+
+        public static async Task<object> Handle(CreateNewRoleCommand command)
+        {
+            // Line 34 equivalent - this is where false positive occurs in Allrisk
+            var role = command.Adapt<Role>();  
+            
+            await Task.Delay(1);
+            return role;
+        }
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    [Fact]
+    public async Task RecordToClassWithFields_TryToTriggerFalsePositive_ShouldNotReportDiagnostic()
+    {
+        const string testCode = @"
+// Aggressive test to try to trigger the false positive
+#nullable enable
+using System;
+using System.Net;
+using Mapster;
+using System.Threading.Tasks;
+
+namespace Allrisk.AllriskIdentity.Authorization.Application.Commands
+{
+    /// <summary>
+    /// Command to create a new role
+    /// </summary>
+    /// <param name=""Name"">Name of the role. Can contain only lowercase and ':' colons.</param>
+    /// <param name=""Description"">Description of the role.</param>
+    public record CreateNewRoleCommand(string Name, string Description);
+}
+
+namespace Allrisk.AllriskIdentity.Authorization.Core
+{
+    public class Role
+    {
+        public string Description;
+
+        [System.ComponentModel.DataAnnotations.Key]
+        public string Name;
+    }
+
+    namespace Events
+    {
+        /// <summary>
+        /// Event triggered when a new role is created
+        /// </summary>
+        /// <param name=""Name"">Unique name of the role</param>
+        /// <param name=""Description"">Description of the role</param>
+        public record NewRoleCreated(string Name, string Description);
+    }
+}
+
+namespace SomeOtherNamespace
+{
+    using Allrisk.AllriskIdentity.Authorization.Application.Commands;
+    using Allrisk.AllriskIdentity.Authorization.Core;
+    using Allrisk.AllriskIdentity.Authorization.Core.Events;
+
+    public class CreateNewRoleCommandHandler
+    {
+        public static async Task<object> LoadAsync(CreateNewRoleCommand command)
+        {
+            var existingRole = ""test""; // Mock session.LoadAsync<Role>(command.Name);
+            if (existingRole is not null)
+            {
+                return ""Role with the same name already exists"";
+            }
+
+            return ""OK"";
+        }
+
+        public static async Task<object> Handle(CreateNewRoleCommand command)
+        {
+            // This is the EXACT line that produces false positive in Allrisk (line 34)
+            var role = command.Adapt<Role>();
+
+            // Additional mapping similar to Allrisk
+            var newRoleCreated = command.Adapt<NewRoleCreated>();
+
+            await Task.Delay(1);
+            return newRoleCreated;
+        }
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
+    #endregion
+
     private static async Task VerifyAnalyzerAsync(string source, params DiagnosticResult[] expected)
     {
         var test = new CSharpAnalyzerTest<MapsterAdaptAnalyzer, DefaultVerifier>
