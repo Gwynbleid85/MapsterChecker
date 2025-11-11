@@ -5,6 +5,8 @@ namespace SampleApp2;
 
 
 
+public record SimpleRecordA(int Id, string Name);
+
 public class PhoneNumber : IFormattable
 {
     /// <summary>

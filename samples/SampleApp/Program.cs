@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using CleanResult;
 using Mapster;
+using SampleApp2;
 
 namespace SampleApp;
 
@@ -203,6 +204,10 @@ public class MappingTests
         
         var command2 = role.Adapt<CreateNewRoleCommand>();
         
+        var simpleRecordA = new SimpleRecordA(1, "Test");
+        
+        var simpleClass = simpleRecordA.Adapt<SimpleClassA>();
+        var simpleRecordA2 = simpleClass.Adapt<SimpleRecordA>();
         // Test if Mapster actually supports field mapping at runtime
         Console.WriteLine($"Command: Name={command.Name}, Description={command.Description}");
     }

@@ -13,6 +13,12 @@ public record RecordC(string Id, string Name);
 public record RecordD(string Id, string[] Name, int Age);
 public record RecordE(string Id, string Name, int Age);
 
+public class SimpleClassA
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+}
+
 public class CompoundClassA
 {
     public int Id { get; set; }

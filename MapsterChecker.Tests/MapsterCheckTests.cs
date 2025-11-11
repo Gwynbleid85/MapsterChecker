@@ -1,12 +1,9 @@
+using MapsterChecker.Analyzer;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
-using MapsterChecker.Analyzer;
-using System.Threading.Tasks;
-using Xunit;
-using System.Collections.Immutable;
 
-namespace MapsterChecker.Tests;
+namespace MapsterCheck.Tests;
 
 public class MapsterAdaptAnalyzerTests
 {
@@ -2269,6 +2266,69 @@ namespace SomeOtherNamespace
         await VerifyAnalyzerAsync(testCode);
     }
 
+    [Fact]
+    public async Task RecordWithNestedSameTypeProperties_ShouldNotRecurse()
+    {
+        const string testCode = @"
+using Mapster;
+using System;
+using System.Collections.Generic;
+
+public class ContractClient
+{
+    public Guid Id { get; set; }
+    public required ContractPerson ContractPerson { get; set; }
+}
+
+public class ContractPerson
+{
+    public string Name { get; set; } = string.Empty;
+}
+
+public class ContractBroker
+{
+    public Guid Id { get; set; }
+    public required string AgentNumber { get; set; }
+    public string? FullName { get; set; }
+}
+
+public record UpsertCommand(
+    Guid Id,
+    ContractClient Client,
+    ContractBroker ContractManager);
+
+public class Contract
+{
+    public Guid Id { get; set; }
+    public required ContractClient Client { get; set; }
+    public required ContractBroker ContractManager { get; set; }
+}
+
+public class TestClass
+{
+    public void TestMethod()
+    {
+        var client = new ContractClient
+        {
+            Id = Guid.NewGuid(),
+            ContractPerson = new ContractPerson { Name = ""John"" }
+        };
+        var broker = new ContractBroker
+        {
+            Id = Guid.NewGuid(),
+            AgentNumber = ""12345"",
+            FullName = ""Jane Doe""
+        };
+        var command = new UpsertCommand(Guid.NewGuid(), client, broker);
+
+        // Should not report errors - Client and ContractManager are same types on both sides
+        var contract = command.Adapt<Contract>();
+    }
+}";
+
+        await VerifyAnalyzerAsync(testCode);
+    }
+
     #endregion
 
     private static async Task VerifyAnalyzerAsync(string source, params DiagnosticResult[] expected)
@@ -2283,7 +2343,7 @@ namespace SomeOtherNamespace
         test.TestState.AdditionalReferences.Add(MetadataReference.CreateFromFile(typeof(Mapster.TypeAdapter).Assembly.Location));
         
         // Only add explicit expected diagnostics if provided
-        if (expected != null && expected.Length > 0)
+        if (expected is { Length: > 0 })
         {
             test.ExpectedDiagnostics.AddRange(expected);
         }

@@ -204,15 +204,17 @@ public class PropertyMappingAnalyzer(SemanticModel semanticModel, MappingConfigu
             }
 
             // Recursively analyze nested complex types
-            if (IsComplexType(sourceMemberType) && IsComplexType(destType))
+            // Skip if source and destination property types are identical (no mapping needed)
+            if (IsComplexType(sourceMemberType) && IsComplexType(destType) &&
+                !SymbolEqualityComparer.Default.Equals(sourceMemberType, destType))
             {
                 var nestedResult = PerformPropertyAnalysis(
-                    sourceType, 
-                    destType, 
-                    currentPropertyPath, 
+                    sourceMemberType,  // Use the property type, not parent type
+                    destType,          // destType is already the destination property type
+                    currentPropertyPath,
                     currentDepth + 1,
                     overriddenProperties);
-                
+
                 issues.AddRange(nestedResult.Issues);
             }
         }

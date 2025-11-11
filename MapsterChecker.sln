@@ -4,11 +4,11 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapsterChecker.Analyzer", "MapsterChecker.Analyzer\MapsterChecker.Analyzer.csproj", "{A5F5B5A2-2B5C-4D5E-8F5A-5B5A2B5C4D5E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapsterChecker.Tests", "MapsterChecker.Tests\MapsterChecker.Tests.csproj", "{B6F6C6B3-3C6D-5E6F-9F6B-6C6B3C6D5E6F}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleApp", "samples\SampleApp\SampleApp.csproj", "{00000000-0000-0000-0000-000000000000}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleApp2", "SampleApp2\SampleApp2.csproj", "{5D306035-3340-4ADD-9D89-F4425F843DFB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapsterChecker.Tests", "MapsterChecker.Tests\MapsterChecker.Tests.csproj", "{BF88236A-D462-4848-8F70-C2FA4DBAE4C6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -20,15 +20,15 @@ Global
 		{A5F5B5A2-2B5C-4D5E-8F5A-5B5A2B5C4D5E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A5F5B5A2-2B5C-4D5E-8F5A-5B5A2B5C4D5E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A5F5B5A2-2B5C-4D5E-8F5A-5B5A2B5C4D5E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B6F6C6B3-3C6D-5E6F-9F6B-6C6B3C6D5E6F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B6F6C6B3-3C6D-5E6F-9F6B-6C6B3C6D5E6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B6F6C6B3-3C6D-5E6F-9F6B-6C6B3C6D5E6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B6F6C6B3-3C6D-5E6F-9F6B-6C6B3C6D5E6F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{00000000-0000-0000-0000-000000000000}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{00000000-0000-0000-0000-000000000000}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5D306035-3340-4ADD-9D89-F4425F843DFB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5D306035-3340-4ADD-9D89-F4425F843DFB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5D306035-3340-4ADD-9D89-F4425F843DFB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5D306035-3340-4ADD-9D89-F4425F843DFB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BF88236A-D462-4848-8F70-C2FA4DBAE4C6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BF88236A-D462-4848-8F70-C2FA4DBAE4C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BF88236A-D462-4848-8F70-C2FA4DBAE4C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BF88236A-D462-4848-8F70-C2FA4DBAE4C6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
