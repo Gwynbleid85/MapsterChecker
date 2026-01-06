@@ -13,4 +13,4 @@ In my project im using Mapster's (https://github.com/MapsterMapper/Mapster) `src
 - It should be easy to integrate into existing projects
 - The tool should be able to handle both `src.Adapt(dest)` and `src.Adapt<dest>()` method invocations
 - It should be able to handle complex types and collections
-- The tool should run on .NET 9 and later versions
+- The tool should run on .NET 9, .NET 10, and later versions

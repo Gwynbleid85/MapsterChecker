@@ -218,16 +218,123 @@ public class TypeCompatibilityChecker(SemanticModel semanticModel, MappingConfig
 
     /// <summary>
     /// Checks if two types have any common members (properties or fields) that can be mapped.
+    /// For source types: we need readable members (getter)
+    /// For destination types: we need writable members (setter or init)
     /// </summary>
     /// <param name="sourceType">The source type</param>
     /// <param name="destinationType">The destination type</param>
     /// <returns>True if the types have at least one common member</returns>
     private bool HasCommonProperties(ITypeSymbol sourceType, ITypeSymbol destinationType)
     {
-        var sourceMemberNames = new HashSet<string>(GetMappableMemberNames(sourceType));
-        var destMemberNames = GetMappableMemberNames(destinationType);
-        
-        return destMemberNames.Any(destName => sourceMemberNames.Contains(destName));
+        var sourceReadableNames = new HashSet<string>(GetReadableMemberNames(sourceType));
+        var destWritableNames = GetWritableMemberNames(destinationType);
+
+        return destWritableNames.Any(destName => sourceReadableNames.Contains(destName));
+    }
+
+    /// <summary>
+    /// Gets all readable member names (properties with getters, fields).
+    /// Used for source type analysis.
+    /// </summary>
+    private IEnumerable<string> GetReadableMemberNames(ITypeSymbol type)
+    {
+        var propertyNames = GetReadableProperties(type).Select(p => p.Name);
+        var fieldNames = GetReadableFields(type).Select(f => f.Name);
+        return propertyNames.Concat(fieldNames).Distinct();
+    }
+
+    /// <summary>
+    /// Gets all writable member names (properties with setters/init, fields).
+    /// Used for destination type analysis.
+    /// </summary>
+    private IEnumerable<string> GetWritableMemberNames(ITypeSymbol type)
+    {
+        var propertyNames = GetWritableProperties(type).Select(p => p.Name);
+        var fieldNames = GetWritableFields(type).Select(f => f.Name);
+        return propertyNames.Concat(fieldNames).Distinct();
+    }
+
+    /// <summary>
+    /// Gets all public readable properties (has getter).
+    /// </summary>
+    private IEnumerable<IPropertySymbol> GetReadableProperties(ITypeSymbol type)
+    {
+        return GetAllProperties(type)
+            .Where(prop =>
+                prop.DeclaredAccessibility == Accessibility.Public &&
+                !prop.IsStatic &&
+                prop.GetMethod != null);
+    }
+
+    /// <summary>
+    /// Gets all public writable properties (has setter or init).
+    /// For records with positional parameters, the SetMethod exists and IsInitOnly is true.
+    /// </summary>
+    private IEnumerable<IPropertySymbol> GetWritableProperties(ITypeSymbol type)
+    {
+        return GetAllProperties(type)
+            .Where(prop =>
+                prop.DeclaredAccessibility == Accessibility.Public &&
+                !prop.IsStatic &&
+                prop.SetMethod != null); // SetMethod includes both regular setters and init-only setters
+    }
+
+    /// <summary>
+    /// Gets all public readable fields.
+    /// </summary>
+    private IEnumerable<IFieldSymbol> GetReadableFields(ITypeSymbol type)
+    {
+        return GetAllFields(type)
+            .Where(field =>
+                field.DeclaredAccessibility == Accessibility.Public &&
+                !field.IsStatic);
+    }
+
+    /// <summary>
+    /// Gets all public writable fields (not readonly, not const).
+    /// </summary>
+    private IEnumerable<IFieldSymbol> GetWritableFields(ITypeSymbol type)
+    {
+        return GetAllFields(type)
+            .Where(field =>
+                field.DeclaredAccessibility == Accessibility.Public &&
+                !field.IsStatic &&
+                !field.IsReadOnly &&
+                !field.IsConst);
+    }
+
+    /// <summary>
+    /// Gets all properties including inherited ones.
+    /// </summary>
+    private IEnumerable<IPropertySymbol> GetAllProperties(ITypeSymbol type)
+    {
+        var properties = new List<IPropertySymbol>();
+        var currentType = type;
+
+        while (currentType != null)
+        {
+            properties.AddRange(currentType.GetMembers().OfType<IPropertySymbol>());
+            currentType = currentType.BaseType;
+        }
+
+        return properties.Distinct(SymbolEqualityComparer.Default).Cast<IPropertySymbol>();
+    }
+
+    /// <summary>
+    /// Gets all fields including inherited ones.
+    /// </summary>
+    private IEnumerable<IFieldSymbol> GetAllFields(ITypeSymbol type)
+    {
+        var fields = new List<IFieldSymbol>();
+        var currentType = type;
+
+        while (currentType != null)
+        {
+            fields.AddRange(currentType.GetMembers().OfType<IFieldSymbol>());
+            currentType = currentType.BaseType;
+        }
+
+        return fields.Distinct(SymbolEqualityComparer.Default).Cast<IFieldSymbol>();
     }
 
     /// <summary>

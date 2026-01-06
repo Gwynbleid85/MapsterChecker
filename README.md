@@ -174,7 +174,7 @@ var result = sourceObject.Adapt<TargetType>();
 ## Building from Source
 
 ### Prerequisites
-- .NET 9.0 SDK or later
+- .NET 9.0 or .NET 10.0 SDK
 - Visual Studio 2022 or JetBrains Rider (optional)
 
 ### Build Steps
