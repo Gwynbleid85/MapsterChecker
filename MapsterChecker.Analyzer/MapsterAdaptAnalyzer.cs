@@ -30,76 +30,49 @@ public class MapsterAdaptAnalyzer : DiagnosticAnalyzer
     /// <summary>
     /// Initializes the analyzer by registering for compilation-level analysis.
     /// Configures the analyzer to skip generated code and enable concurrent execution.
-    /// Uses compilation-level context to ensure configuration discovery and analysis share state.
+    /// Uses RegisterCompilationStartAction to ensure configuration discovery happens first,
+    /// then registers syntax node actions for proper IDE integration with inline errors.
     /// </summary>
     /// <param name="context">The analysis context to configure</param>
     public override void Initialize(AnalysisContext context)
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
-        
-        // Use compilation-level analysis to ensure proper state sharing
-        context.RegisterCompilationAction(compilationContext =>
+
+        // Use RegisterCompilationStartAction to discover configurations first,
+        // then register syntax node actions for proper IDE inline error display
+        context.RegisterCompilationStartAction(compilationStartContext =>
         {
             var registry = new MappingConfigurationRegistry();
             var discovery = new MapsterConfigurationDiscovery(registry);
-            
-            // Collect all invocations from all syntax trees first
-            var allInvocations = new List<(InvocationExpressionSyntax Invocation, SemanticModel SemanticModel)>();
-            
-            foreach (var syntaxTree in compilationContext.Compilation.SyntaxTrees)
+
+            // First pass: discover all configurations across all syntax trees
+            foreach (var syntaxTree in compilationStartContext.Compilation.SyntaxTrees)
             {
 #pragma warning disable RS1030 // Do not invoke Compilation.GetSemanticModel() method within a diagnostic analyzer
-                var semanticModel = compilationContext.Compilation.GetSemanticModel(syntaxTree);
+                var semanticModel = compilationStartContext.Compilation.GetSemanticModel(syntaxTree);
 #pragma warning restore RS1030
-                var root = syntaxTree.GetRoot(compilationContext.CancellationToken);
-                
+                var root = syntaxTree.GetRoot(compilationStartContext.CancellationToken);
+
                 foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
                 {
-                    allInvocations.Add((invocation, semanticModel));
+                    var mockContext = new SyntaxNodeAnalysisContext(
+                        invocation,
+                        semanticModel,
+                        compilationStartContext.Options,
+                        diagnostic => { }, // We're only discovering, not reporting diagnostics
+                        _ => true,
+                        compilationStartContext.CancellationToken);
+
+                    discovery.DiscoverConfiguration(mockContext);
                 }
             }
-            
-            // First pass: discover all configurations across all invocations
-            // Process configuration calls first to ensure registry is fully populated
-            foreach (var (invocation, semanticModel) in allInvocations)
-            {
-                var mockContext = new SyntaxNodeAnalysisContext(
-                    invocation,
-                    semanticModel,
-                    compilationContext.Options,
-                    diagnostic => { }, // We're only discovering, not reporting diagnostics
-                    _ => true,
-                    compilationContext.CancellationToken);
-                
-                discovery.DiscoverConfiguration(mockContext);
-            }
-            
-            // Second pass: analyze Adapt calls with the now-populated registry
-            // Only process Adapt calls after all configurations have been discovered
-            foreach (var (invocation, semanticModel) in allInvocations)
-            {
-                // Skip configuration calls in analysis phase
-                if (IsMapsterConfigurationCall(invocation, semanticModel))
-                    continue;
-                    
-                var diagnostics = new List<Diagnostic>();
-                var mockContext = new SyntaxNodeAnalysisContext(
-                    invocation,
-                    semanticModel,
-                    compilationContext.Options,
-                    diagnostic => diagnostics.Add(diagnostic),
-                    _ => true,
-                    compilationContext.CancellationToken);
-                
-                AnalyzeInvocation(mockContext, registry);
-                
-                // Report all diagnostics found
-                foreach (var diagnostic in diagnostics)
-                {
-                    compilationContext.ReportDiagnostic(diagnostic);
-                }
-            }
+
+            // Register syntax node action for proper IDE integration
+            // This ensures diagnostics are properly associated with source locations
+            compilationStartContext.RegisterSyntaxNodeAction(
+                nodeContext => AnalyzeInvocation(nodeContext, registry),
+                SyntaxKind.InvocationExpression);
         });
     }
 
